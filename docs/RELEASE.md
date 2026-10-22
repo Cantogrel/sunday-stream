@@ -39,15 +39,19 @@ plus un bandeau d'avertissement).
 | Clé | Rôle | Où elle vit |
 |---|---|---|
 | Keystore Android (`couchstream-release.keystore`) | Signature de l'APK. Perdue = plus de mise à jour possible de l'APK sur les téléphones déjà installés (Android refuse une autre signature). | Secrets Actions du dépôt (`ANDROID_KEYSTORE_B64`, `ANDROID_KEYSTORE_PASSWORD`) **et** sauvegarde dans le dépôt privé `couch-stream-signing`. |
-| Clé de mise à jour Tauri (`updater.key`) | Signature des mises à jour de l'application Windows. La clé **publique** est dans `desktop/src-tauri/tauri.conf.json`. | Secrets Actions (`TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`) **et** sauvegarde dans `couch-stream-signing`. |
+| Clé de mise à jour Tauri (`updater.key`, **propre à Sunday Stream**, créée le 2026-10-22) | Signature des mises à jour de l'application Windows. La clé **publique** est dans `desktop/src-tauri/tauri.conf.json`. Perdue = plus de mise à jour automatique possible. | Secrets Actions (`TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`), copie de travail `%USERPROFILE%\.sundaystream-signing\` et copie locale `E:\Stream\_backups\2026-10-22-signing-sundaystream\`. **Pas encore de sauvegarde hors de la machine.** |
 
-Une copie de travail existe aussi dans `%USERPROFILE%\.couchstream-signing\` sur
-le PC de développement (jamais dans le dépôt public : `.gitignore` exclut
-`keystore.properties`, `*.keystore`, `*.jks`).
+Le **keystore Android est celui de Couch**, inchangé (le dépôt `sunday-stream` a reçu les mêmes secrets
+`ANDROID_KEYSTORE_B64` / `ANDROID_KEYSTORE_PASSWORD`, alias `couchstream`). Sa copie de travail reste dans
+`%USERPROFILE%\.couchstream-signing\` et sa sauvegarde dans le dépôt privé `couch-stream-signing`. Rien de tout cela
+n'entre dans le dépôt public (`.gitignore` exclut `keystore.properties`, `*.keystore`, `*.jks`).
 
-Si le PC de développement disparaît : les releases continuent (les clés sont dans
-les secrets Actions), et les clés se récupèrent depuis le dépôt privé
-`couch-stream-signing` pour construire en local.
+Si le PC de développement disparaît : les releases continuent (les clés sont dans les secrets Actions). Le keystore se
+récupère depuis `couch-stream-signing` ; la clé de mise à jour n'a pour l'instant que la copie locale ci-dessus (à
+sauvegarder ailleurs).
+
+**Un Couch déjà installé ne se met pas à jour vers Sunday Stream** (son updater interroge
+`Cantogrel/couch-stream-app`, qui ne reçoit plus de release) : la migration passe par l'installeur Sunday Stream.
 
 ## Construire en local (sans GitHub)
 
@@ -63,7 +67,7 @@ les secrets Actions), et les clés se récupèrent depuis le dépôt privé
    ```
    La clé de mise à jour est lue dans `%USERPROFILE%\.couchstream-signing\`, ou dans la
    variable `TAURI_SIGNING_PRIVATE_KEY` ; sans clé, le build se fait sans mise à jour.
-3. Manifeste : `node desktop/scripts/make-latest-json.mjs Cantogrel/couch-stream-app vX.Y.Z "notes"`.
+3. Manifeste : `node desktop/scripts/make-latest-json.mjs Cantogrel/sunday-stream vX.Y.Z "notes"`.
 
 ## Limites connues
 

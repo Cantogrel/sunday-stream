@@ -1,6 +1,6 @@
 # Installation en 5 minutes
 
-Couch Stream App te laisse piloter ton stream (OBS + chat Twitch) depuis ton
+Sunday Stream te laisse piloter ton stream (OBS + chat Twitch) depuis ton
 téléphone, avec le micro du téléphone envoyé dans le stream. Il y a deux
 morceaux : l'application **Windows** (sur le PC qui fait tourner OBS) et
 l'application **Android**.
@@ -16,7 +16,7 @@ l'application **Android**.
 
 ## Étape 1 — Installer l'application Windows
 
-1. Lance `Couch Stream App_x.y.z_x64-setup.exe`. Aucun droit administrateur
+1. Lance `Sunday Stream_x.y.z_x64-setup.exe`. Aucun droit administrateur
    n'est demandé.
 2. Windows SmartScreen peut afficher « Windows a protégé votre ordinateur »
    (l'installeur n'est pas encore signé par un éditeur reconnu) : clique sur
@@ -27,7 +27,7 @@ l'application **Android**.
 
 ## Étape 2 — L'assistant de configuration
 
-Au premier lancement, une page « Bienvenue dans Couch Stream App » s'ouvre. Tu
+Au premier lancement, une page « Bienvenue dans Sunday Stream » s'ouvre. Tu
 peux la rouvrir à tout moment : clic droit sur l'icône → **Assistant de
 configuration**. Chaque étape se vérifie toute seule.
 
@@ -86,7 +86,7 @@ passe ni jeton** n'y figure.
 |---|---|
 | « OBS n'est pas connecté » | OBS est fermé, ou son serveur WebSocket est désactivé (*Outils → Paramètres du serveur WebSocket*). |
 | Pas de son du téléphone dans OBS | VB-Cable absent (étape 2) ou source micro non créée (étape 4). Si l'installation de VB-Cable vient d'être faite, redémarre le PC. |
-| Le téléphone ne trouve pas le PC | Même Wi-Fi ? Le pare-feu Windows a-t-il autorisé « Couch Stream App » sur les réseaux privés ? Bouton « Chercher le PC sur le réseau » dans les Réglages de l'app. |
+| Le téléphone ne trouve pas le PC | Même Wi-Fi ? Le pare-feu Windows a-t-il autorisé « Sunday Stream » sur les réseaux privés ? Bouton « Chercher le PC sur le réseau » dans les Réglages de l'app. |
 | « Jumelage refusé par le PC » | Le téléphone a été oublié côté PC : rejumelle-le par QR. |
 | Le chat Twitch ne se connecte pas | Étape 3 de l'assistant à refaire (le jeton a peut-être expiré ou été révoqué). |
 
