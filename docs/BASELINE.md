@@ -120,3 +120,24 @@ Android (`CONTRACT-ANDROID-V1.md`), « [D] » = contrat Discord (`CONTRACT-DISCO
 - [ ] Installation par utilisateur sans UAC ; désinstallation propre.
 - [ ] Aucun secret dans le dépôt, les journaux, les diagnostics, les notes.
 - [ ] Les deux anciens projets restent utilisables jusqu'à la bascule (phase 5).
+
+## 5. Mesures après la phase 1 (build local 0.2.0, 2026-10-22)
+
+| Élément | Avant (Couch v0.1.4 publié) | Après (Sunday Stream 0.2.0, build local) |
+|---|---|---|
+| **Installeur NSIS** (APK 0.2.0 incluse) | 42 130 295 o = **40,18 Mo** | 30 937 734 o = **29,50 Mo** (budget ≤ 39,8 Mo : marge ≈ 10,3 Mo pour `discord.js`) |
+| Sidecar (service + pages + UI téléphone, hors APK) | 78,3 Mo (dont `node_modules` 74,6 Mo) | **10,0 Mo** (service regroupé 2,4 Mo + `node_modules` 7,2 Mo + pages 0,07 Mo + UI téléphone 0,35 Mo) |
+| `node_modules` embarqué | 94 paquets | 2 paquets : `node-web-audio-api` (binaire **win32-x64** seul) et `caller` ; `node-fetch` remplacé par un module vide |
+| `node.exe` | 81,62 Mo | 81,62 Mo (inchangé : plus gros bloc restant) |
+| Coquille Tauri (`sunday-stream.exe`) | 12,2 Mo | 12,77 Mo (+ plugin dialog) |
+| APK servie par `/app.apk` | 3,15 Mo, `versionName 0.1.4` / `versionCode 6` | 3 300 417 o = 3,15 Mo, **`0.2.0` / `7`**, même `applicationId`, **même certificat de signature** (SHA-256 `1ca33b5f…6b49`) |
+
+Contrôles de la phase 1 déjà passés : `cargo test` (copie des données de Couch : copie et non déplacement, fichier existant
+conservé, chemin accentué), `scripts/conformance-android-v1.mjs` sur le service de développement **et** sur le service
+embarqué/installé (36 contrôles : `/hello`, jumelage, 4001/4003, séquence d'accueil, commandes, mDNS, `/app.apk`),
+lancement de l'exe construit (fenêtre « Sunday Stream » créée, service démarré, arrêt du service avec l'application).
+Non vérifiable ici : la boîte de confirmation de migration (dialogue natif) et l'essai sur un vrai téléphone.
+
+Piège d'environnement : un `"` parasite dans le `PATH` Windows (`C:\Program Files\GitHub CLI"`) fait que la CLI Tauri ne trouve
+plus `cargo` (« program not found », `tauri info` affiche « Cargo: not installed »). Retirer le guillemet du `PATH`
+(ou le filtrer avant `npm run build`).
