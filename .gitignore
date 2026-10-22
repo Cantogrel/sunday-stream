@@ -6,3 +6,18 @@ build/
 android/app/build/
 android/.gradle/
 graphify-out/
+target/
+binaries/*.exe
+sidecar/
+
+# Transcripts bruts (outils, résultats) : ne jamais versionner
+docs/history/*.zip
+docs/history/*.jsonl
+docs/history/_x/
+
+# Secrets / environnement
+*.env
+secrets.dat
+*.keystore
+*.jks
+keystore.properties
