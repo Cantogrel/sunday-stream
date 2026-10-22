@@ -1,84 +1,59 @@
-# Couch Stream App
+# Sunday Stream
 
-App de pilotage de stream Twitch/OBS depuis le canapé, sans se lever.
+Appli Windows unique qui gère tout ce qui touche au stream Twitch/OBS : pilotage depuis le canapé
+(app Android « Couch Stream App »), chat et modération, et — à venir — le bot Discord du dimanche soir
+et la gestion des clips. Elle fusionne les anciens projets *Couch Stream App* et *Sunday Stream Bot*.
 
-## Contexte
-
-Le PC de jeu est relié à la TV du salon (Sunshine/Moonlight + manette Xbox,
-hors scope). Ce projet pilote le stream Twitch (OBS Studio, sur le même PC)
-depuis un téléphone, en LAN uniquement — pas d'accès distant hors domicile.
-
-Projet séparé du bot Discord "Sunday Stream Bot" (autre repo, aucun lien
-technique).
-
-## Fonctionnalités cibles
-
-- Start/stop du stream depuis le téléphone.
-- Changement de scène OBS, mute/unmute micro.
-- Capture du micro du téléphone → envoi au PC → injection dans OBS (source
-  micro) via VB-Audio Virtual Cable.
-- Chat Twitch en direct : lecture, réponse, modération (suppression,
-  timeout/ban).
-- Notifications configurables sur l'activité du chat (pic de messages,
-  mentions).
-- Vue santé du stream (bitrate, frames perdues).
+Plan, décisions et phases : [docs/PLAN.md](docs/PLAN.md). Contrats à ne pas casser :
+[docs/CONTRACT-ANDROID-V1.md](docs/CONTRACT-ANDROID-V1.md) (app Android installée),
+[docs/CONTRACT-DISCORD.md](docs/CONTRACT-DISCORD.md) (compatibilité avec l'ancien exe).
+Mesures de départ et non-régression : [docs/BASELINE.md](docs/BASELINE.md).
 
 ## Architecture
 
 ```
-[Téléphone - app Android via Capacitor]
-  Dashboard / Scènes / Chat / Toggle micro / Notifs
-        │ WebSocket (contrôle + chat) + audio Opus/WebRTC, LAN
+[Téléphone Android — app Capacitor « Couch Stream App », inchangée]
+        │ WebSocket (protocole v1 figé) + audio Opus/WebRTC, LAN
         ▼
-[PC - service compagnon Node.js, à côté d'OBS]
-  obs-websocket (contrôle OBS) · Twitch IRC (tmi.js) + Helix API
-  (modération) · réception audio micro → VB-Audio Virtual Cable
-  · serveur WebSocket local authentifié par token partagé
+[PC — Sunday Stream (Tauri v2)]            desktop/
+   fenêtre d'appli + zone de notification · instance unique · démarrage avec Windows · mises à jour signées
+        │ supervise
+        ▼
+   [service Node, un seul fichier]         pc-service/
+   obs-websocket · Twitch IRC/Helix · audio micro → VB-Cable · serveur HTTP+WS · mDNS
+   pages : /app (fenêtre), /desktop (console), /setup (assistant)
         │
         ▼
 [OBS Studio] → source micro = VB-Cable → diffuse vers Twitch
 ```
 
-Capacitor plutôt qu'une PWA pure : le micro doit rester actif écran éteint /
-app en arrière-plan, ce qu'un foreground service Android natif garantit et
-qu'une PWA ne garantit pas de façon fiable.
+- `desktop/` — application Windows (Tauri v2, Rust) : tray, fenêtre, migration depuis Couch, mises à jour.
+- `pc-service/` — service Node supervisé (regroupé en un seul fichier par esbuild à l'installation).
+- `mobile-app/` — app Android (UI web `www/` + plugins natifs). Même `applicationId`, même keystore que Couch.
+- `docs/` — plan, contrats, mesures, guides.
 
-Stack 100% gratuite/open source : OBS, obs-websocket, Twitch API, VB-Audio
-Virtual Cable, Node.js, Capacitor.
+## Identité
 
-## Plan par phases
+Produit « Sunday Stream » · identifiant `com.binagames.sundaystream` · données `%APPDATA%\SundayStream` ·
+version `0.2.0` (le téléphone compare cette version à la sienne pour proposer sa mise à jour).
 
-- **Phase 0 — Setup** : obs-websocket, VB-Cable, app Twitch développeur +
-  OAuth (scopes chat + modération), IP fixe du PC.
-- **Phase 1 — Service compagnon PC** : obs-websocket, Twitch IRC + Helix,
-  serveur WebSocket local avec token (testable avant toute UI).
-- **Phase 2 — Pipeline audio micro** : réception WebRTC/Opus, injection
-  VB-Cable, validation latence.
-- **Phase 3 — Interface web** (testée directement dans Chrome mobile).
-- **Phase 4 — Empaquetage Capacitor** (clôturée et validée sur téléphone
-  réel) : foreground service micro natif, notifications, pairing QR code,
-  build APK. Voir `mobile-app/README.md`.
-- **Phase 5 — Finitions** (clôturée et validée sur téléphone réel, 2026-09-23) : santé du
-  stream (débit kb/s, fps, CPU OBS, frames perdues, congestion, polling 2s),
-  règles de notification (alerte santé sur tendance 60s avec seuils
-  réglables, alerte déconnexion OBS/Twitch en live, pseudos ignorés),
-  réglages audio (gain d'entrée 0-300 %, limiteur, buffer de gigue PC
-  réglable depuis le téléphone), bouton de restauration des valeurs par
-  défaut. Le redémarrage du service PC est requis
-  (nouvelles commandes `obs.getHealth`, `audio.setJitterBuffer`).
-- **Phase 6 — Installation et usage zéro friction** (planifiée) : service PC
-  en vraie app Windows (installeur, tray, démarrage auto), assistant de
-  premier lancement (OBS, VB-Cable intégré, Twitch device code, source
-  micro), pairing sans URL (QR dans l'app + découverte mDNS), robustesse.
-  Voir `docs/PHASE6-PLAN.md`.
+## Développement
 
-Voir aussi le graphe Graphify (`E:\Super IA\Graphify\Couch-Stream-App\graphify-out\`)
-et le vault mémoire (`projects/couch-stream-app/` dans AI-Memory) pour l'état
-détaillé et les décisions.
+```bash
+# Service seul (données dans un dossier de test, port libre)
+cd pc-service && npm ci
+SUNDAY_DATA_DIR=/chemin/test LOCAL_WS_PORT=8790 node src/index.js
+node scripts/conformance-android-v1.mjs 8790      # vérifie le contrat Android v1
 
-## Installation et publication
+# Application Windows (installeur)
+cd desktop && npm ci && npm run build             # prépare le sidecar puis tauri build
+```
 
-- **Utilisateur** : [docs/INSTALLATION.md](docs/INSTALLATION.md) — « Installation en 5 minutes »
-  (installeur Windows, assistant de configuration, application Android, dépannage).
-- **Mainteneur** : [docs/RELEASE.md](docs/RELEASE.md) — signature (APK + mises à jour), procédure de release.
-- **Plan et décisions** : [docs/PHASE6-PLAN.md](docs/PHASE6-PLAN.md).
+APK Android : voir [mobile-app/README.md](mobile-app/README.md) (JDK 21, SDK Android, keystore hors dépôt).
+Publication et signature : [docs/RELEASE.md](docs/RELEASE.md).
+Installation côté utilisateur : [docs/INSTALLATION.md](docs/INSTALLATION.md).
+
+## Historique
+
+Le dépôt repart de l'historique de *Couch Stream App* (v0.1.0 → v0.1.4). Le code Python de *Sunday Stream Bot*
+n'est jamais importé : le bot Discord est réécrit en Node dans le service (phase 2).

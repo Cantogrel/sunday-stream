@@ -403,7 +403,7 @@ async function loadPairing() {
 let dlgTimer = null;
 async function openDialog() {
   pane('pair');
-  $('dlg').showModal();
+  if (document.documentElement.dataset.view === 'phone') $('dlg').show(); else $('dlg').showModal();
   loadPairing();
   loadDevices();
   // Code valable 10 min : on le renouvelle avant l'expiration, et on rafraîchit
@@ -428,7 +428,7 @@ $('copyReport').onclick = async () => {
 $('settingsBtn').onclick = openDialog;
 $('dlgClose').onclick = () => $('dlg').close();
 $('dlg').addEventListener('close', () => clearInterval(dlgTimer));
-if (location.hash === '#pair') openDialog();
+if (location.hash === '#pair' || document.documentElement.dataset.view === 'phone') openDialog();
 
 pollStatus();
 setInterval(pollStatus, 2000);

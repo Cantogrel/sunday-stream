@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bientôt disponible</title>
+<style>
+  :root { --bg:#0d0d10; --card:#1a1a1f; --border:#2a2a30; --fg:#eee; --dim:#9a9aa2; }
+  html, body { height: 100%; margin: 0; background: var(--bg); color: var(--fg); font-family: system-ui, "Segoe UI", sans-serif; }
+  body { display: flex; align-items: center; justify-content: center; padding: 1rem; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 1.6rem 1.8rem; max-width: 34rem; }
+  h1 { margin: 0 0 .5rem; font-size: 1.25rem; }
+  p { color: var(--dim); line-height: 1.5; margin: .4rem 0; }
+  .pill { display: inline-block; font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; border: 1px solid var(--border); border-radius: 999px; padding: .1rem .55rem; color: var(--dim); margin-bottom: .8rem; }
+</style>
+</head>
+<body>
+<div class="card">
+  <span class="pill">Bientôt disponible</span>
+  <h1 id="t"></h1>
+  <p id="d"></p>
+</div>
+<script>
+  const S = {
+    discord: ['Discord', "Le bot Discord de Sunday Stream (détection de l'arrivée au vocal, lancement du stream, verrou entre amis) arrivera avec la prochaine étape. En attendant, l'ancien SundayStreamBot.exe continue de fonctionner normalement."],
+    clips: ['Clips', "La gestion des clips (Replay Buffer, publication sur Discord, vote des admins) arrivera avec le module Discord. L'ancien exe continue d'assurer les clips d'ici là."],
+  };
+  const [t, d] = S[new URLSearchParams(location.search).get('s')] || ['Bientôt', ''];
+  document.getElementById('t').textContent = t;
+  document.getElementById('d').textContent = d;
+</script>
+</body>
+</html>

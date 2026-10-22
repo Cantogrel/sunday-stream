@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Réglages</title>
+<style>
+  :root { --bg:#0d0d10; --card:#1a1a1f; --border:#2a2a30; --fg:#eee; --dim:#9a9aa2; --ok:#4fd1a0; --bad:#f45b5b; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--fg); font-family: system-ui, "Segoe UI", sans-serif; }
+  main { max-width: 40rem; margin: 0 auto; padding: 1.4rem 1.2rem; display: flex; flex-direction: column; gap: 1rem; }
+  h1 { font-size: 1.25rem; margin: 0; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1rem 1.1rem; }
+  .card h2 { font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; color: var(--dim); margin: 0 0 .6rem; }
+  .row { display: flex; justify-content: space-between; align-items: center; gap: .8rem; padding: .45rem 0; border-top: 1px solid var(--border); font-size: .9rem; }
+  .row:first-of-type { border-top: 0; }
+  .row small { display: block; color: var(--dim); font-size: .75rem; margin-top: .15rem; }
+  button { font: inherit; color: inherit; cursor: pointer; background: #2a2a32; border: 1px solid var(--border); border-radius: 8px; padding: .4rem .85rem; font-size: .85rem; }
+  button:hover { border-color: #444; }
+  button.primary { background: var(--ok); color: #06231a; border: none; font-weight: 700; }
+  button:disabled { opacity: .45; cursor: default; }
+  [hidden] { display: none !important; }
+  #msg { color: var(--dim); font-size: .8rem; min-height: 1.1em; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Réglages</h1>
+
+  <div class="card">
+    <h2>Application</h2>
+    <div class="row"><span>Version<small id="upd">Vérification…</small></span><span><b id="ver">–</b> <button id="chk" type="button">Rechercher une mise à jour</button></span></div>
+    <div class="row" id="installRow" hidden><span id="installText"></span><button class="primary" id="install" type="button">Installer</button></div>
+  </div>
+
+  <div class="card">
+    <h2>Configuration</h2>
+    <div class="row"><span>Assistant de configuration<small>OBS, VB-Cable, compte Twitch, source micro, jumelage du téléphone</small></span><button id="wizard" type="button">Ouvrir</button></div>
+  </div>
+
+  <div class="card">
+    <h2>Diagnostic</h2>
+    <div class="row"><span>Rapport de diagnostic<small>Texte à joindre en cas de problème (les secrets sont masqués)</small></span><button id="report" type="button">Copier</button></div>
+    <div id="msg"></div>
+  </div>
+</main>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const post = (m) => parent.postMessage({ type: 'goto', ...m }, location.origin);
+  const api = (p, o) => fetch(p, o).then((r) => r.json());
+
+  async function refresh() {
+    try {
+      const s = await api('/api/status', { cache: 'no-store' });
+      $('ver').textContent = 'v' + s.version;
+      const u = s.update || {};
+      const t = { unknown: "Mises à jour gérées par l'application installée", idle: 'Pas encore vérifié', checking: 'Vérification…', uptodate: 'À jour', available: `Version ${u.version} disponible`, downloading: `Téléchargement… ${u.progress ?? 0} %`, installing: 'Installation…', error: u.message || 'Vérification impossible' };
+      $('upd').textContent = t[u.state] || '';
+      $('installRow').hidden = u.state !== 'available';
+      $('installText').textContent = u.state === 'available' ? `Installer la version ${u.version} (ferme l'application puis la relance)` : '';
+    } catch { $('upd').textContent = 'Service indisponible'; }
+  }
+  $('chk').onclick = async () => { await api('/api/update/check', { method: 'POST' }).catch(() => {}); setTimeout(refresh, 3500); };
+  $('install').onclick = async () => {
+    const r = await api('/api/update/install', { method: 'POST', body: '{}' });
+    if (!r.ok) $('msg').textContent = r.error;
+  };
+  $('wizard').onclick = () => post({ url: '/setup' });
+  $('report').onclick = async () => {
+    try { await navigator.clipboard.writeText((await api('/api/diagnostics')).text); $('msg').textContent = 'Rapport copié dans le presse-papiers.'; }
+    catch { $('msg').textContent = 'Copie impossible.'; }
+  };
+  refresh();
+  setInterval(refresh, 4000);
+</script>
+</body>
+</html>

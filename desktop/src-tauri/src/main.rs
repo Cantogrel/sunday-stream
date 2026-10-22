@@ -10,7 +10,8 @@ use std::thread;
 use std::time::Duration;
 use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_updater::UpdaterExt;
@@ -130,6 +131,208 @@ fn open_service_page(app: &AppHandle, dir: &Path, _port: u16, path: &str) {
     }
 }
 
+fn service_up(port: u16) -> bool {
+    let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
+    std::net::TcpStream::connect_timeout(&addr, Duration::from_millis(400)).is_ok()
+}
+
+// Fenêtre d'appli (menu latéral + sections, servie par le service sur /app).
+// `section` : live | obs | chat | phone | discord | clips | settings | wizard.
+// Fermer la fenêtre la masque (l'app reste dans la zone de notification).
+// Si le service ne répond pas encore, retombe sur la page d'attente du navigateur.
+fn show_main(app: &AppHandle, dir: &Path, section: &str) {
+    let port = local_port(dir);
+    if !service_up(port) {
+        return open_service_page(app, dir, port, "/desktop");
+    }
+    let Ok(url) = format!("http://127.0.0.1:{port}/app#{section}").parse::<tauri::Url>() else { return };
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        if let Some(w) = handle.get_webview_window("main") {
+            let _ = w.navigate(url);
+            let _ = w.unminimize();
+            let _ = w.show();
+            let _ = w.set_focus();
+            return;
+        }
+        let nav_handle = handle.clone();
+        let built = WebviewWindowBuilder::new(&handle, "main", WebviewUrl::External(url))
+            .title("Sunday Stream")
+            .inner_size(1280.0, 800.0)
+            .min_inner_size(900.0, 600.0)
+            // Les liens externes (autorisation Twitch, etc.) s'ouvrent dans le navigateur.
+            .on_navigation(move |u| {
+                let local = u.host_str() == Some("127.0.0.1") || matches!(u.scheme(), "about" | "data" | "blob");
+                if !local {
+                    let _ = nav_handle.opener().open_url(u.as_str(), None::<&str>);
+                }
+                local
+            })
+            .build();
+        if let Ok(w) = built {
+            let hide = w.clone();
+            w.on_window_event(move |ev| {
+                if let WindowEvent::CloseRequested { api, .. } = ev {
+                    api.prevent_close();
+                    let _ = hide.hide();
+                }
+            });
+        }
+    });
+}
+
+// ---------- migration depuis Couch Stream App ----------
+//
+// Au premier lancement, si des données de l'ancien Couch existent : après
+// confirmation, ferme l'ancien Couch, COPIE ses données (rien n'est déplacé ni
+// supprimé) et retire son démarrage automatique (sinon les deux apps se
+// disputeraient le port 8765 à chaque démarrage de Windows).
+const MIGRATION_FILES: [&str; 6] = ["identity.json", "devices.json", "secrets.dat", ".env", "setup.json", "obs-path.txt"];
+const COUCH_RUN_VALUE: &str = "Couch Stream App";
+
+fn couch_dir_in(appdata: &Path) -> PathBuf {
+    appdata.join("CouchStreamApp")
+}
+
+fn couch_data_present(old: &Path) -> bool {
+    old.join("identity.json").exists() || old.join("devices.json").exists()
+}
+
+// Copie les fichiers de l'ancien dossier vers le nouveau. Un fichier déjà présent
+// est conservé sous `<nom>.avant-import` plutôt qu'écrasé. Renvoie les fichiers copiés.
+fn copy_couch_data(old: &Path, new: &Path) -> std::io::Result<Vec<String>> {
+    fs::create_dir_all(new)?;
+    let mut copied = Vec::new();
+    for name in MIGRATION_FILES {
+        let src = old.join(name);
+        if !src.is_file() {
+            continue;
+        }
+        let dst = new.join(name);
+        if dst.exists() {
+            fs::rename(&dst, new.join(format!("{name}.avant-import")))?;
+        }
+        fs::copy(&src, &dst)?;
+        copied.push(name.to_string());
+    }
+    Ok(copied)
+}
+
+fn hidden(cmd: &mut Command) -> &mut Command {
+    cmd.creation_flags(CREATE_NO_WINDOW)
+}
+
+fn stop_couch(old: &Path) {
+    let port = local_port(old);
+    let _ = hidden(Command::new("taskkill").args(["/F", "/T", "/IM", "couch-stream-app.exe"])).output();
+    for _ in 0..40 {
+        if !service_up(port) {
+            return;
+        }
+        thread::sleep(Duration::from_millis(250));
+    }
+}
+
+fn disable_couch_autostart() {
+    let _ = hidden(Command::new("reg").args(["delete", r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run", "/v", COUCH_RUN_VALUE, "/f"])).output();
+}
+
+// Renvoie vrai si des données ont été importées. `force` : demande même si une
+// décision précédente existe (menu « Reprendre les données de Couch »).
+fn run_migration(app: &AppHandle, new: &Path, force: bool) -> bool {
+    let marker = new.join(".migration");
+    if !force && marker.exists() {
+        return false;
+    }
+    let appdata = std::env::var("APPDATA").map(PathBuf::from).unwrap_or_default();
+    let old = couch_dir_in(&appdata);
+    if !couch_data_present(&old) {
+        if !force {
+            let _ = fs::write(&marker, "none");
+        } else {
+            app.dialog().message("Aucune donnée de Couch Stream App trouvée sur ce PC.").title("Sunday Stream").kind(MessageDialogKind::Info).show(|_| {});
+        }
+        return false;
+    }
+    let accepted = app
+        .dialog()
+        .message(
+            "Une installation de Couch Stream App a été trouvée sur ce PC.\n\n\
+             Sunday Stream peut la remplacer :\n\
+             • fermer Couch Stream App s'il tourne (un live en cours via l'app serait interrompu) ;\n\
+             • copier ses données : téléphones jumelés, connexion Twitch, réglages OBS. Rien n'est supprimé ni déplacé ;\n\
+             • retirer son démarrage automatique avec Windows.\n\n\
+             Ton téléphone n'aura pas besoin d'être jumelé de nouveau.",
+        )
+        .title("Sunday Stream — reprendre Couch Stream App ?")
+        .kind(MessageDialogKind::Info)
+        .buttons(MessageDialogButtons::OkCancelCustom("Reprendre mes données".into(), "Plus tard".into()))
+        .blocking_show();
+    if !accepted {
+        let _ = fs::write(&marker, "declined");
+        return false;
+    }
+    stop_couch(&old);
+    let result = copy_couch_data(&old, new);
+    disable_couch_autostart();
+    match result {
+        Ok(files) => {
+            let _ = fs::write(&marker, format!("done {} {}", now_ms(), files.join(",")));
+            app.dialog()
+                .message(format!("Données reprises : {}.\nL'ancien Couch Stream App reste installé (désinstallable depuis Windows quand tu veux).", files.join(", ")))
+                .title("Sunday Stream")
+                .kind(MessageDialogKind::Info)
+                .show(|_| {});
+            true
+        }
+        Err(e) => {
+            let _ = fs::write(&marker, format!("error {e}"));
+            app.dialog().message(format!("L'import a échoué : {e}")).title("Sunday Stream").kind(MessageDialogKind::Error).show(|_| {});
+            false
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tmp(name: &str) -> PathBuf {
+        let p = std::env::temp_dir().join(format!("ss-test-{name}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&p);
+        fs::create_dir_all(&p).unwrap();
+        p
+    }
+
+    #[test]
+    fn copies_without_moving_and_keeps_existing() {
+        let old = tmp("old-é");
+        let new = tmp("new").join("sub");
+        fs::write(old.join("identity.json"), "{\"id\":\"A\"}").unwrap();
+        fs::write(old.join("secrets.dat"), "xyz").unwrap();
+        fs::write(old.join("autre.txt"), "ignoré").unwrap();
+        fs::create_dir_all(&new).unwrap();
+        fs::write(new.join("identity.json"), "{\"id\":\"NEW\"}").unwrap();
+
+        let copied = copy_couch_data(&old, &new).unwrap();
+        assert_eq!(copied, vec!["identity.json", "secrets.dat"]);
+        // l'original est intact (copie, pas déplacement)
+        assert_eq!(fs::read_to_string(old.join("identity.json")).unwrap(), "{\"id\":\"A\"}");
+        // le nouveau fichier est celui de Couch, l'ancien contenu est conservé
+        assert_eq!(fs::read_to_string(new.join("identity.json")).unwrap(), "{\"id\":\"A\"}");
+        assert_eq!(fs::read_to_string(new.join("identity.json.avant-import")).unwrap(), "{\"id\":\"NEW\"}");
+        assert!(!new.join("autre.txt").exists());
+    }
+
+    #[test]
+    fn detects_couch_data() {
+        let d = tmp("detect");
+        assert!(!couch_data_present(&d));
+        fs::write(d.join("devices.json"), "[]").unwrap();
+        assert!(couch_data_present(&d));
+    }
+}
+
 // Mises à jour : l'app VÉRIFIE seule (au démarrage puis toutes les 6 h) mais
 // n'INSTALLE jamais sans demande explicite — l'installeur ferme l'app, ce qui
 // couperait un live en cours. L'état est publié dans update-status.json (lu
@@ -187,8 +390,7 @@ fn check_update(app: AppHandle, dir: PathBuf, manual: bool) {
         UPDATE_BUSY.store(false, Ordering::SeqCst);
         if manual {
             if available {
-                let port = local_port(&dir);
-                open_service_page(&app, &dir, port, "/desktop#update");
+                show_main(&app, &dir, "settings");
                 return;
             }
             let page = dir.join("update.html");
@@ -273,9 +475,10 @@ fn main() {
             // Raccourci du bureau / menu Démarrer alors que l'app tourne déjà (icône
             // dans la zone de notification) : ouvre la console au lieu de ne rien faire.
             let dir = data_dir();
-            open_service_page(app, &dir, local_port(&dir), "/desktop");
+            show_main(app, &dir, "live");
         }))
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--autostart"])))
         .setup(|app| {
@@ -295,9 +498,18 @@ fn main() {
             let manual_launch = !std::env::args().any(|a| a == "--autostart");
 
             let svc = Arc::new(Service { child: Mutex::new(None), quitting: AtomicBool::new(false) });
-            supervise(app.handle().clone(), svc.clone(), dir.clone());
+            // Reprise des données de Couch (confirmation) AVANT de lancer le service,
+            // pour qu'il démarre avec l'identité, les jumelages et la connexion Twitch repris.
+            {
+                let handle = app.handle().clone();
+                let svc = svc.clone();
+                let dir = dir.clone();
+                thread::spawn(move || {
+                    run_migration(&handle, &dir, false);
+                    supervise(handle, svc, dir);
+                });
+            }
 
-            let port = local_port(&dir);
 
             // Vérification automatique 60 s après le démarrage, puis toutes les 6 h :
             // l'app tourne des jours entiers (démarrage avec Windows), et un réseau
@@ -332,9 +544,9 @@ fn main() {
                                 .map(|s| s.replace(' ', "").contains("\"completed\":true"))
                                 .unwrap_or(false);
                             if !done {
-                                open_service_page(&handle, &dir, port, "/setup");
+                                show_main(&handle, &dir, "wizard");
                             } else if manual_launch {
-                                open_service_page(&handle, &dir, port, "/desktop");
+                                show_main(&handle, &dir, "live");
                             }
                             return;
                         }
@@ -342,17 +554,19 @@ fn main() {
                     }
                 });
             }
-            let state = MenuItem::with_id(app, "state", "Ouvrir la console", true, None::<&str>)?;
+            let state = MenuItem::with_id(app, "state", "Ouvrir Sunday Stream", true, None::<&str>)?;
+            let import = MenuItem::with_id(app, "import", "Reprendre les données de Couch Stream App…", true, None::<&str>)?;
             let setup_item = MenuItem::with_id(app, "setup", "Assistant de configuration", true, None::<&str>)?;
             let update_item = MenuItem::with_id(app, "update", "Rechercher une mise à jour", true, None::<&str>)?;
             let pair = MenuItem::with_id(app, "pair", "Jumeler un téléphone (QR)", true, None::<&str>)?;
             let logs = MenuItem::with_id(app, "logs", "Ouvrir le dossier de données", true, None::<&str>)?;
             let auto = CheckMenuItem::with_id(app, "auto", "Démarrer avec Windows", true, app.autolaunch().is_enabled().unwrap_or(false), None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quitter", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&state, &pair, &setup_item, &update_item, &logs, &PredefinedMenuItem::separator(app)?, &auto, &PredefinedMenuItem::separator(app)?, &quit])?;
+            let menu = Menu::with_items(app, &[&state, &pair, &setup_item, &update_item, &import, &logs, &PredefinedMenuItem::separator(app)?, &auto, &PredefinedMenuItem::separator(app)?, &quit])?;
 
             let data = dir.clone();
             let svc_quit = svc.clone();
+            let svc_import = svc.clone();
             TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
                 .tooltip("Sunday Stream")
@@ -362,15 +576,26 @@ fn main() {
                     let data = dir.clone();
                     move |tray, event| {
                         if let tauri::tray::TrayIconEvent::Click { button: tauri::tray::MouseButton::Left, button_state: tauri::tray::MouseButtonState::Up, .. } = event {
-                            open_service_page(tray.app_handle(), &data, port, "/desktop");
+                            show_main(tray.app_handle(), &data, "live");
                         }
                     }
                 })
                 .on_menu_event(move |app, event| match event.id.as_ref() {
-                    "state" => open_service_page(app, &data, port, "/desktop"),
+                    "state" => show_main(app, &data, "live"),
                     "update" => check_update(app.clone(), data.clone(), true),
-                    "setup" => open_service_page(app, &data, port, "/setup"),
-                    "pair" => open_service_page(app, &data, port, "/desktop#pair"),
+                    "setup" => show_main(app, &data, "wizard"),
+                    "pair" => show_main(app, &data, "phone"),
+                    "import" => {
+                        let (app, data, svc) = (app.clone(), data.clone(), svc_import.clone());
+                        thread::spawn(move || {
+                            // Le service tourne déjà : on le relance pour qu'il relise les fichiers repris.
+                            if run_migration(&app, &data, true) {
+                                if let Some(c) = svc.child.lock().unwrap().as_mut() {
+                                    let _ = c.kill();
+                                }
+                            }
+                        });
+                    }
                     "logs" => open_url(app, &data.to_string_lossy()),
                     "auto" => {
                         let al = app.autolaunch();

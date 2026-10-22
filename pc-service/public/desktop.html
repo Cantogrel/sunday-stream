@@ -92,10 +92,21 @@
 
   #toast { position: fixed; bottom: 1.2rem; left: 50%; transform: translateX(-50%); background: var(--bad); color: #2a0808; padding: .6rem 1.1rem; border-radius: 8px; font-size: .85rem; z-index: 50; }
 
+
+  /* Affichage intégré à la fenêtre d'appli (?view=live|obs|chat|phone) : l'en-tête est remplacé par le menu latéral. */
+  html[data-view] header { display: none; }
+  html[data-view="obs"] main, html[data-view="chat"] main { grid-template-columns: minmax(0, 1fr); }
+  html[data-view="obs"] main > .col:nth-child(2) { display: none; }
+  html[data-view="chat"] main > .col:nth-child(1) { display: none; }
+  html[data-view="phone"] main { display: none; }
+  html[data-view="phone"] #dlg { display: block; margin: 1.4rem auto; max-width: 520px; }
+  html[data-view="phone"] #dlgClose { display: none; }
+
   @media (max-width: 900px) { main { grid-template-columns: 1fr; overflow-y: auto; } .col { overflow: visible; } .chat { min-height: 24rem; } }
 </style>
 </head>
 <body>
+<script>{const v=new URLSearchParams(location.search).get('view');if(v)document.documentElement.dataset.view=v;}</script>
 
 <header>
   <h1>Sunday Stream</h1>

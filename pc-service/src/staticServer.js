@@ -67,7 +67,8 @@ async function findApk() {
 async function buildPairingData({ devices, identity }) {
   const host = getLanAddress();
   const port = config.localWs.port;
-  const payload = JSON.stringify({ v: 2, host, port, pcId: identity.id, name: identity.name, code: devices.createPairingCode() });
+  const code = devices.createPairingCode();
+  const payload = JSON.stringify({ v: 2, host, port, pcId: identity.id, name: identity.name, code });
   const qrDataUrl = host ? await QRCode.toDataURL(payload, { margin: 2, scale: 8 }) : null;
   const apk = await findApk();
   const apkUrl = host ? `http://${host}:${port}/app.apk` : null;
@@ -75,6 +76,7 @@ async function buildPairingData({ devices, identity }) {
     host,
     port,
     qrDataUrl,
+    code, // exposé uniquement sur /api/pairing (boucle locale) ; sert aux tests de conformité
     apk: apk && apkUrl ? { url: apkUrl, sizeMb: (apk.size / 1048576).toFixed(1), qrDataUrl: await QRCode.toDataURL(apkUrl, { margin: 2, scale: 8 }) } : null,
   };
 }
@@ -127,7 +129,9 @@ async function readBody(req, limit = 4096) {
 
 export function createStaticServer({ getStatus, getDiagnostics, setup, launchObs, devices, identity, listDevices, revokeDevice, service, getUpdate, checkUpdate, installUpdate }) {
   return createServer(async (req, res) => {
-    const urlPath = req.url === '/' ? '/index.html' : req.url === '/desktop' ? '/desktop.html' : req.url === '/setup' ? '/setup.html' : req.url.split('?')[0];
+    const pathname = req.url.split('?')[0];
+    const PAGES = { '/': '/index.html', '/desktop': '/desktop.html', '/setup': '/setup.html', '/app': '/shell.html' };
+    const urlPath = PAGES[pathname] || pathname;
 
     // Routes LAN pour le téléphone (CORS : l'app tourne sur http://localhost).
     // Le téléphone s'y identifie sans token : /hello ne révèle que l'identité

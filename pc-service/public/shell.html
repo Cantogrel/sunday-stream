@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sunday Stream</title>
+<style>
+  :root { --bg:#0d0d10; --side:#121216; --card:#1a1a1f; --border:#2a2a30; --fg:#eee; --dim:#9a9aa2; --ok:#4fd1a0; --bad:#f45b5b; --warn:#f5b942; --accent:#4fd1a0; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; background: var(--bg); color: var(--fg); font-family: system-ui, "Segoe UI", sans-serif; }
+  body { display: grid; grid-template-columns: 220px minmax(0, 1fr); }
+  button { font: inherit; color: inherit; cursor: pointer; }
+
+  nav { background: var(--side); border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: .9rem .6rem; gap: .15rem; min-height: 0; }
+  .brand { display: flex; align-items: center; gap: .55rem; padding: .2rem .6rem .9rem; font-weight: 700; font-size: 1.02rem; }
+  .brand i { width: 1.5rem; height: 1.5rem; border-radius: 7px; background: linear-gradient(135deg, #4fd1a0, #2b8c6c); display: inline-block; }
+  nav a { display: flex; align-items: center; gap: .65rem; padding: .55rem .7rem; border-radius: 9px; color: var(--dim); text-decoration: none; font-size: .92rem; border: 1px solid transparent; }
+  nav a:hover { background: #1b1b21; color: var(--fg); }
+  nav a.active { background: #1f2a25; color: var(--fg); border-color: #2b4a3d; }
+  nav a .ico { width: 1.2rem; text-align: center; }
+  nav a .tag { margin-left: auto; font-size: .62rem; text-transform: uppercase; letter-spacing: .04em; color: var(--dim); border: 1px solid var(--border); border-radius: 999px; padding: .05rem .4rem; }
+  .sep { height: 1px; background: var(--border); margin: .5rem .4rem; }
+  .grow { flex: 1; }
+
+  .status { padding: .6rem .6rem 0; display: flex; flex-direction: column; gap: .35rem; font-size: .78rem; color: var(--dim); border-top: 1px solid var(--border); }
+  .status .row { display: flex; align-items: center; gap: .45rem; }
+  .dot { width: .55rem; height: .55rem; border-radius: 50%; background: var(--dim); flex: none; }
+  .dot.ok { background: var(--ok); } .dot.bad { background: var(--bad); } .dot.warn { background: var(--warn); }
+  .ver { opacity: .75; }
+
+  main { min-width: 0; min-height: 0; position: relative; }
+  iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: var(--bg); }
+
+  @media (max-width: 760px) {
+    body { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }
+    nav { flex-direction: row; overflow-x: auto; padding: .4rem; border-right: 0; border-bottom: 1px solid var(--border); }
+    .brand, .sep, .status, .grow, nav a .tag { display: none; }
+    nav a { white-space: nowrap; }
+  }
+</style>
+</head>
+<body>
+
+<nav aria-label="Sections">
+  <div class="brand"><i></i>Sunday Stream</div>
+  <a href="#live" data-s="live"><span class="ico">●</span>En direct</a>
+  <a href="#obs" data-s="obs"><span class="ico">🎬</span>Stream &amp; OBS</a>
+  <a href="#chat" data-s="chat"><span class="ico">💬</span>Chat Twitch</a>
+  <a href="#phone" data-s="phone"><span class="ico">📱</span>Téléphone</a>
+  <div class="sep"></div>
+  <a href="#discord" data-s="discord"><span class="ico">🎮</span>Discord<span class="tag">bientôt</span></a>
+  <a href="#clips" data-s="clips"><span class="ico">✂️</span>Clips<span class="tag">bientôt</span></a>
+  <div class="grow"></div>
+  <a href="#settings" data-s="settings"><span class="ico">⚙️</span>Réglages</a>
+  <div class="status">
+    <div class="row"><span class="dot" id="obsDot"></span>OBS</div>
+    <div class="row"><span class="dot" id="twDot"></span>Twitch</div>
+    <div class="row"><span class="dot" id="phDot"></span><span id="phText">Aucun téléphone</span></div>
+    <div class="ver" id="ver"></div>
+  </div>
+</nav>
+
+<main><iframe id="stage" title="Contenu"></iframe></main>
+
+<script src="shell.js"></script>
+</body>
+</html>
