@@ -79,7 +79,7 @@ async function main() {
 
 // Lancé par l'app Windows (desktop/) : si elle disparaît (crash, kill), stdin
 // se ferme et le service s'arrête au lieu de rester orphelin.
-if (process.env.COUCH_PARENT_STDIN === '1') {
+if (process.env.SUNDAY_PARENT_STDIN === '1') {
   process.stdin.resume();
   process.stdin.on('end', () => process.exit(0));
 }

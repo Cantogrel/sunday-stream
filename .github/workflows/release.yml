@@ -75,7 +75,7 @@ jobs:
         run: npm run build
 
       - name: Manifeste de mise à jour
-        run: node desktop/scripts/make-latest-json.mjs "${{ github.repository }}" "${{ github.ref_name }}" "Couch Stream App ${{ github.ref_name }}"
+        run: node desktop/scripts/make-latest-json.mjs "${{ github.repository }}" "${{ github.ref_name }}" "Sunday Stream ${{ github.ref_name }}"
 
       - name: Publier la release
         env:
@@ -84,6 +84,6 @@ jobs:
           NSIS="desktop/src-tauri/target/release/bundle/nsis"
           cp mobile-app/android/app/build/outputs/apk/release/app-release.apk CouchStream.apk
           gh release create "${{ github.ref_name }}" \
-            --title "Couch Stream App ${{ github.ref_name }}" \
+            --title "Sunday Stream ${{ github.ref_name }}" \
             --generate-notes \
             "$NSIS"/*-setup.exe "$NSIS/latest.json" CouchStream.apk

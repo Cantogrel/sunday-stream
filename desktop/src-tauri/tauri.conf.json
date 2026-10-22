@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Couch Stream App",
-  "version": "0.1.4",
-  "identifier": "com.binagames.couchstream",
+  "productName": "Sunday Stream",
+  "version": "0.2.0",
+  "identifier": "com.binagames.sundaystream",
   "build": {
     "frontendDist": "../ui"
   },
@@ -35,9 +35,9 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEY1RDk0MEQ5REQ1MEU3MzgKUldRNDUxRGQyVURaOVJvTVZWQlMyVHV0WldhM2Nra3VVTytLR28rYTBzaXI0anBOTml2enpoSCsK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDZCM0FERDZDRjhBMjc4Q0MKUldUTWVLTDRiTjA2YTJBU0Rvejh2Z0tEZGl6YjlPTXoxTlh2Mjh1VGI5aDIxUHd3aEN1RDBwTVAK",
       "endpoints": [
-        "https://github.com/Cantogrel/couch-stream-app/releases/latest/download/latest.json"
+        "https://github.com/Cantogrel/sunday-stream/releases/latest/download/latest.json"
       ],
       "windows": {
         "installMode": "passive"

@@ -90,14 +90,14 @@ async function buildPairingPage(ctx) {
   return `<!DOCTYPE html>
 <html lang="fr"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Pairing — Couch Stream App</title>
+<title>Pairing — Sunday Stream</title>
 <style>
   body { font-family: system-ui, sans-serif; background: #111; color: #eee; text-align: center; padding: 24px; }
   img { background: #fff; padding: 12px; border-radius: 8px; }
   code { background: #222; padding: 2px 6px; border-radius: 4px; }
   .fallback { font-size: 0.9em; color: #aaa; margin-top: 24px; }
 </style></head>
-<body><h1>Couch Stream App — Pairing</h1>${body}</body></html>`;
+<body><h1>Sunday Stream — Pairing</h1>${body}</body></html>`;
 }
 
 // Sert mobile-app/www et pc-service/public en lecture seule (atteignable en

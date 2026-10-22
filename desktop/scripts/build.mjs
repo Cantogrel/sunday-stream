@@ -1,5 +1,5 @@
 // Build de l'installeur. La clé de signature des mises à jour vit hors du dépôt
-// (%USERPROFILE%\\.couchstream-signing) : si elle est présente, l'installeur est
+// (%USERPROFILE%\\.sundaystream-signing) : si elle est présente, l'installeur est
 // signé et le fichier de mise à jour (.sig) est produit ; sinon, build local
 // sans artefacts de mise à jour.
 import { spawnSync } from 'node:child_process';
@@ -7,7 +7,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
-const keyDir = join(homedir(), '.couchstream-signing');
+const keyDir = join(homedir(), '.sundaystream-signing');
 const keyPath = join(keyDir, 'updater.key');
 const env = { ...process.env };
 const args = ['tauri', 'build'];

@@ -20,7 +20,7 @@ function renderObs(s) {
   const o = s.obs;
   if (o.connected) {
     return `<p class="msg ok">OBS ${esc(o.version || '')} répond.</p>` +
-      (o.versionOk === false ? `<p class="msg err">Cette version d'OBS est trop ancienne : Couch Stream App demande OBS 28 ou plus récent (le serveur WebSocket n'y est pas intégré avant).</p>` : '');
+      (o.versionOk === false ? `<p class="msg err">Cette version d'OBS est trop ancienne : Sunday Stream demande OBS 28 ou plus récent (le serveur WebSocket n'y est pas intégré avant).</p>` : '');
   }
   let h = '';
   if (!o.installed) {
@@ -104,7 +104,7 @@ function renderPhone(s) {
         <img class="qr" src="${p.apk.qrDataUrl}" alt="QR de téléchargement">
         <p class="note">Ou ouvre ce lien dans le navigateur du téléphone : <b>${esc(p.apk.url)}</b><br>
         Android demandera d'autoriser l'installation depuis ce navigateur (« Installer des applis inconnues ») : c'est normal, l'app n'est pas sur le Play Store.</p></div>`
-    : `<div class="sub-step"><h3>A. Installe l'application</h3><p>Le fichier de l'app n'est pas inclus dans cette installation : récupère l'APK auprès de la personne qui t'a donné Couch Stream App.</p></div>`;
+    : `<div class="sub-step"><h3>A. Installe l'application</h3><p>Le fichier de l'app n'est pas inclus dans cette installation : récupère l'APK auprès de la personne qui t'a donné Sunday Stream.</p></div>`;
   const pair = `<div class="sub-step"><h3>B. Jumelle-la avec ce PC</h3>
       <p>Ouvre l'app, va dans <b>Réglages → « Jumeler avec le PC »</b> et scanne ce code (valable 10 minutes, il se renouvelle tout seul).</p>
       <img class="qr" src="${p.qrDataUrl}" alt="QR de jumelage"></div>`;
@@ -116,7 +116,7 @@ let lastKey = '';
 function render() {
   if (!S) return;
   const firstTodo = STEPS.findIndex((st) => !st.done(S));
-  const sysWarn = S.system && !S.system.ok ? `<div class="step"><p class="msg err">Windows ${esc(S.system.windows)} détecté : Couch Stream App demande Windows 10 ou 11.</p></div>` : '';
+  const sysWarn = S.system && !S.system.ok ? `<div class="step"><p class="msg err">Windows ${esc(S.system.windows)} détecté : Sunday Stream demande Windows 10 ou 11.</p></div>` : '';
   const html = sysWarn + STEPS.map((st, i) => {
     const done = st.done(S);
     return `<div class="step ${done ? 'done' : ''} ${i === firstTodo ? 'current' : ''}" data-key="${st.key}">

@@ -31,7 +31,7 @@ export async function buildReport(server) {
     : [];
 
   const out = [
-    '=== Couch Stream App — rapport de diagnostic ===',
+    '=== Sunday Stream — rapport de diagnostic ===',
     `Date : ${new Date().toISOString()}`,
     `Service : v${status.version} (protocole ${PROTOCOL}) — Node ${process.version}`,
     `Système : Windows ${release()} ${arch()} — ${Math.round(totalmem() / 1073741824)} Go de RAM`,

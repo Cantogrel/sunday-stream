@@ -1,3 +1,4 @@
 target/
 binaries/*.exe
 sidecar/
+src-tauri/binaries/*.exe

@@ -32,7 +32,7 @@ fn plain(p: PathBuf) -> PathBuf {
 
 fn data_dir() -> PathBuf {
     let base = std::env::var("APPDATA").map(PathBuf::from).unwrap_or_else(|_| std::env::temp_dir());
-    base.join("CouchStreamApp")
+    base.join("SundayStream")
 }
 
 // Port lu dans le .env du dossier de données (LOCAL_WS_PORT), 8765 par défaut.
@@ -62,8 +62,8 @@ fn spawn_service(app: &AppHandle, dir: &Path) -> std::io::Result<Child> {
     Command::new(exe_dir.join("node.exe"))
         .arg("src/index.js")
         .current_dir(&sidecar)
-        .env("COUCH_DATA_DIR", dir)
-        .env("COUCH_PARENT_STDIN", "1")
+        .env("SUNDAY_DATA_DIR", dir)
+        .env("SUNDAY_PARENT_STDIN", "1")
         .stdin(Stdio::piped())
         .stdout(log.try_clone()?)
         .stderr(log)
@@ -117,10 +117,10 @@ fn open_service_page(app: &AppHandle, dir: &Path, _port: u16, path: &str) {
         return open_url(app, &url);
     }
     let html = format!(
-        r#"<!doctype html><meta charset="utf-8"><title>Couch Stream App</title>
+        r#"<!doctype html><meta charset="utf-8"><title>Sunday Stream</title>
 <body style="font-family:system-ui,sans-serif;background:#0d0d10;color:#eee;max-width:32rem;margin:4rem auto;padding:0 1rem">
 <h2>Le service démarre…</h2>
-<p style="color:#9a9aa2;line-height:1.5">Le service Couch Stream n'est pas encore prêt (démarrage de Windows ou redémarrage automatique). Cette page s'ouvrira toute seule dès qu'il répond.</p>
+<p style="color:#9a9aa2;line-height:1.5">Le service Sunday Stream n'est pas encore prêt (démarrage de Windows ou redémarrage automatique). Cette page s'ouvrira toute seule dès qu'il répond.</p>
 <p style="color:#9a9aa2;line-height:1.5">Si ça dure, ouvre le dossier de données depuis l'icône de la zone de notification et consulte <b>service.log</b>.</p>
 <script>const u="{url}";setInterval(()=>fetch(u,{{mode:"no-cors"}}).then(()=>location.replace(u)).catch(()=>{{}}),1500)</script>"#
     );
@@ -355,7 +355,7 @@ fn main() {
             let svc_quit = svc.clone();
             TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
-                .tooltip("Couch Stream App")
+                .tooltip("Sunday Stream")
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .on_tray_icon_event({
