@@ -469,6 +469,91 @@ fn watch_update_requests(app: AppHandle, dir: PathBuf) {
     });
 }
 
+
+// Arrêt propre du service : lui demande de se fermer (il poste « Stream terminé »
+// si besoin et se déconnecte de Discord), attend jusqu'à 8 s, puis tue en dernier recours.
+fn graceful_stop(svc: &Service, dir: &Path) {
+    let port = local_port(dir);
+    let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
+    if let Ok(mut stream) = std::net::TcpStream::connect_timeout(&addr, Duration::from_millis(400)) {
+        use std::io::Write;
+        let req = format!("POST /api/shutdown HTTP/1.1
+Host: 127.0.0.1:{port}
+Content-Length: 2
+Connection: close
+
+{{}}");
+        let _ = stream.write_all(req.as_bytes());
+    }
+    let mut child = svc.child.lock().unwrap().take();
+    if let Some(c) = child.as_mut() {
+        for _ in 0..80 {
+            if matches!(c.try_wait(), Ok(Some(_))) {
+                return;
+            }
+            thread::sleep(Duration::from_millis(100));
+        }
+        let _ = c.kill();
+    }
+}
+
+// Fenêtre « Lancer le stream ? » (module Discord) : petite, toujours au premier
+// plan. Le service dépose confirm-request.json ; la page /confirm renvoie le choix
+// et se ferme en naviguant vers /closed. Fermée à la main = « Non » (côté page).
+fn show_confirm(app: &AppHandle, dir: &Path, timeout_ms: u64) {
+    let port = local_port(dir);
+    let Ok(url) = format!("http://127.0.0.1:{port}/confirm").parse::<tauri::Url>() else { return };
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        if let Some(w) = handle.get_webview_window("confirm") {
+            let _ = w.set_focus();
+            return;
+        }
+        let nav = handle.clone();
+        let _ = WebviewWindowBuilder::new(&handle, "confirm", WebviewUrl::External(url))
+            .title("Session du dimanche")
+            .inner_size(420.0, 230.0)
+            .resizable(false)
+            .always_on_top(true)
+            .center()
+            .on_navigation(move |u| {
+                if u.path() == "/closed" {
+                    if let Some(w) = nav.get_webview_window("confirm") {
+                        let _ = w.close();
+                    }
+                    return false;
+                }
+                true
+            })
+            .build();
+    });
+    // Filet : ferme la fenêtre si la page n'a pas pu le faire (timeout + 5 s).
+    let handle = app.clone();
+    thread::spawn(move || {
+        thread::sleep(Duration::from_millis(timeout_ms + 5000));
+        let h = handle.clone();
+        let _ = handle.run_on_main_thread(move || {
+            if let Some(w) = h.get_webview_window("confirm") {
+                let _ = w.close();
+            }
+        });
+    });
+}
+
+fn watch_confirm_requests(app: AppHandle, dir: PathBuf) {
+    thread::spawn(move || loop {
+        thread::sleep(Duration::from_millis(500));
+        let path = dir.join("confirm-request.json");
+        let Ok(raw) = fs::read_to_string(&path) else { continue };
+        let _ = fs::remove_file(&path);
+        let timeout = serde_json::from_str::<serde_json::Value>(&raw)
+            .ok()
+            .and_then(|v| v["timeoutMs"].as_u64())
+            .unwrap_or(120_000);
+        show_confirm(&app, &dir, timeout);
+    });
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
@@ -517,6 +602,7 @@ fn main() {
             // Elle ne fait que repérer une version : l'installation se demande ensuite.
             write_status(&dir, serde_json::json!({ "state": "idle", "current": app.package_info().version.to_string() }));
             watch_update_requests(app.handle().clone(), dir.clone());
+            watch_confirm_requests(app.handle().clone(), dir.clone());
             {
                 let handle = app.handle().clone();
                 let dir = dir.clone();
@@ -604,10 +690,12 @@ fn main() {
                     }
                     "quit" => {
                         svc_quit.quitting.store(true, Ordering::SeqCst);
-                        if let Some(mut c) = svc_quit.child.lock().unwrap().take() {
-                            let _ = c.kill();
-                        }
-                        app.exit(0);
+                        // Arrêt propre (Discord : message « Stream terminé » si besoin), hors du fil de l'interface.
+                        let (app, svc, data) = (app.clone(), svc_quit.clone(), data.clone());
+                        thread::spawn(move || {
+                            graceful_stop(&svc, &data);
+                            app.exit(0);
+                        });
                     }
                     _ => {}
                 })

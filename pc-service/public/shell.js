@@ -8,8 +8,8 @@ const SECTIONS = {
   obs: { url: '/desktop?view=obs' },
   chat: { url: '/desktop?view=chat' },
   phone: { url: '/desktop?view=phone' },
-  discord: { url: '/soon.html?s=discord' },
-  clips: { url: '/soon.html?s=clips' },
+  discord: { url: '/discord.html' },
+  clips: { url: '/clips.html' },
   settings: { url: '/settings.html' },
   wizard: { url: '/setup' },
 };

@@ -13,10 +13,12 @@ import { ENV_PATH } from './paths.js';
 const AUTH_TIMEOUT_MS = 5000;
 
 export class LocalWsServer {
-  constructor({ port, token, obs, chat, helix, pcmPlayer, service, devices, identity, setup, twitch, viewers, updater }) {
+  constructor({ port, token, obs, chat, helix, pcmPlayer, service, devices, identity, setup, twitch, viewers, updater, discord, shutdown }) {
     this.setup = setup;
     this.viewers = viewers;
     this.updater = updater;
+    this.discord = discord;
+    this.shutdown = shutdown;
     this.twitch = twitch;
     this.devices = devices;
     this.identity = identity;
@@ -39,7 +41,7 @@ export class LocalWsServer {
   async start() {
     // Même port pour les fichiers statiques (public/, testable depuis le
     // téléphone en HTTP) et le WebSocket (upgrade sur le même serveur HTTP).
-    this.httpServer = createStaticServer({ getStatus: () => this.getStatus(), setup: this.setup, getDiagnostics: () => buildReport(this), launchObs, devices: this.devices, identity: this.identity, listDevices: () => this.listDevices(), revokeDevice: (id) => this.revokeDevice(id), service: this.service, getUpdate: () => this.updater.status(), checkUpdate: () => this.checkUpdate(), installUpdate: (opts) => this.installUpdate(opts) });
+    this.httpServer = createStaticServer({ getStatus: () => this.getStatus(), setup: this.setup, getDiagnostics: () => buildReport(this), launchObs, devices: this.devices, identity: this.identity, listDevices: () => this.listDevices(), revokeDevice: (id) => this.revokeDevice(id), service: this.service, getUpdate: () => this.updater.status(), checkUpdate: () => this.checkUpdate(), installUpdate: (opts) => this.installUpdate(opts), discord: this.discord, shutdown: this.shutdown });
     this.wss = new WebSocketServer({ server: this.httpServer });
     this.wss.on('error', () => {}); // les erreurs d'écoute sont traitées ci-dessous
     await this._listenWithFallback();

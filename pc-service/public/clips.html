@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clips</title>
+<style>
+  :root { --bg:#0d0d10; --card:#1a1a1f; --border:#2a2a30; --fg:#eee; --dim:#9a9aa2; --accent:#5865f2; --ok:#3ba55d; --bad:#ed4245; }
+  html, body { margin: 0; background: var(--bg); color: var(--fg); font-family: system-ui, "Segoe UI", sans-serif; }
+  main { max-width: 52rem; margin: 0 auto; padding: 1.2rem; }
+  h1 { font-size: 1.3rem; margin: 0 0 1rem; }
+  section { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1rem 1.2rem; margin-bottom: 1rem; }
+  button { font: inherit; padding: .6rem 1.1rem; border-radius: 8px; border: 1px solid var(--accent); background: var(--accent); color: #fff; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: default; }
+  .dim { color: var(--dim); font-size: .88rem; line-height: 1.45; }
+  .bar { height: .5rem; background: #101014; border-radius: 4px; overflow: hidden; margin: .2rem 0 .6rem; }
+  .bar > i { display: block; height: 100%; background: var(--accent); width: 0; transition: width .4s; }
+  li { margin: .2rem 0; }
+  #msg { min-height: 1.2rem; margin-top: .6rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Clips</h1>
+  <section>
+    <p id="state" class="dim">…</p>
+    <button id="btn">🎬 Enregistrer un clip maintenant</button>
+    <div id="msg"></div>
+    <p class="dim">Enregistre les dernières secondes du Replay Buffer d'OBS (à activer une fois : Réglages → Sortie → Enregistrement), les publie dans le salon des clips, et les admins votent : 2 ✅ = validé, 1 ❌ = refusé. Sur Discord, la commande <b>/clip</b> fait la même chose.</p>
+  </section>
+  <section>
+    <b>Détection automatique</b> <span class="dim">(niveaux sonores d'OBS pendant le stream)</span>
+    <p class="dim">Score actuel <span id="sc">0</span> · max de la session <span id="mx">0</span></p>
+    <div class="bar"><i id="bar"></i></div>
+    <p class="dim">Micro <span id="s_mic">0%</span> · Pic soudain <span id="s_sp">0%</span> · Audio du jeu <span id="s_in">0%</span></p>
+    <p class="dim">Le seuil et le module se règlent dans la section Discord.</p>
+  </section>
+  <section>
+    <b>Derniers clips</b>
+    <ul id="recent" class="dim"></ul>
+    <p class="dim">Copie locale de chaque clip publié : dossier <b>clips</b> du dossier de données.</p>
+  </section>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const pct = (v) => Math.round(v * 100) + '%';
+async function refresh() {
+  const s = await (await fetch('/api/discord', { cache: 'no-store' })).json();
+  const c = s.clips;
+  $('state').textContent = !s.settings.modules.clips ? "Module Clips désactivé (section Discord → Modules)."
+    : !s.settings.discord.clipsChannelId ? "Renseigne l'ID du salon des clips (section Discord)."
+    : !s.bot.ready ? "Le bot Discord n'est pas connecté : les clips ne peuvent pas être publiés."
+    : c.active ? 'Détection active : OBS diffuse sur ce PC.' : "En attente d'un stream sur ce PC (le bouton fonctionne quand même).";
+  $('sc').textContent = c.last.score.toFixed(2); $('mx').textContent = c.maxScore.toFixed(2);
+  $('bar').style.width = pct(Math.min(1, c.last.score));
+  $('s_mic').textContent = pct(c.last.mic); $('s_sp').textContent = pct(c.last.speech); $('s_in').textContent = pct(c.last.input);
+  $('recent').innerHTML = c.recent.slice().reverse().map((r) => `<li>${new Date(r.at).toLocaleTimeString('fr-FR')} · ${r.source} · ${r.file}</li>`).join('') || '<li>Aucun pour l\'instant.</li>';
+}
+$('btn').onclick = async () => {
+  $('btn').disabled = true; $('msg').textContent = 'Sauvegarde du clip…'; $('msg').style.color = 'var(--dim)';
+  const r = await fetch('/api/clips/trigger', { method: 'POST', body: '{}' }).then((x) => x.json()).catch(() => ({ ok: false, error: 'Service injoignable.' }));
+  $('msg').textContent = r.ok ? 'Clip publié.' : r.error; $('msg').style.color = r.ok ? 'var(--ok)' : 'var(--bad)';
+  $('btn').disabled = false; refresh();
+};
+refresh(); setInterval(() => refresh().catch(() => {}), 2000);
+</script>
+</body>
+</html>

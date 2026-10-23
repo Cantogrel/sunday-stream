@@ -1,4 +1,7 @@
-import { AudioContext, mediaDevices } from 'node-web-audio-api';
+// Chargé à la demande : sans le module Couch (PC d'un ami, Discord seul), la
+// bibliothèque audio native n'est jamais chargée.
+let audioLib = null;
+const loadAudio = async () => (audioLib ??= await import('node-web-audio-api'));
 
 const SAMPLE_RATE = 48000;
 
@@ -27,6 +30,7 @@ export class PcmPlayer {
   // appelée une fois au boot pour échouer vite si VB-Cable n'est pas
   // configuré, sans dépendre d'un premier envoi micro pour le découvrir.
   async resolveDevice() {
+    const { mediaDevices } = await loadAudio();
     const devices = await mediaDevices.enumerateDevices();
     const device = devices.find(
       (d) => d.kind === 'audiooutput' && d.label.includes(this.deviceLabelMatch),
@@ -58,6 +62,7 @@ export class PcmPlayer {
     // au backend audio de minimiser la latence plutôt que d'optimiser pour
     // le CPU/la stabilité — le rendre explicite ici pour ne pas en dépendre
     // implicitement.
+    const { AudioContext } = await loadAudio();
     this.ctx = new AudioContext({ sinkId: device.deviceId, sampleRate: SAMPLE_RATE, latencyHint: 'interactive' });
     this.nextTime = this.ctx.currentTime + this.jitterBufferMs / 1000;
     const hwLatencyMs = Math.round(((this.ctx.outputLatency ?? this.ctx.baseLatency) || 0) * 1000);

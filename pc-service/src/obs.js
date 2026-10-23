@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events';
-import OBSWebSocket from 'obs-websocket-js';
+import OBSWebSocket, { EventSubscription } from 'obs-websocket-js';
 
 // Nom de la source ajoutée en Phase 0 (voir
 // decision-vbcable-obs-source-via-websocket-api dans le vault) — la source
@@ -61,7 +61,8 @@ export class ObsController extends EventEmitter {
       this.streaming = outputActive;
       this.emit('event', { name: 'obs.stream_state', active: outputActive });
     });
-    obs.on('InputMuteStateChanged', ({ inputName, inputMuted }) => {
+    obs.on('InputVolumeMeters', ({ inputs }) => this.emit('volume-meters', inputs));
+    obs.on('InputMuteStateChanged',({ inputName, inputMuted }) => {
       if (inputName === MIC_INPUT_NAME) {
         this.emit('event', { name: 'obs.mic_mute_changed', muted: inputMuted });
       }
@@ -89,7 +90,9 @@ export class ObsController extends EventEmitter {
     this.obs?.removeAllListeners();
     const obs = new OBSWebSocket();
     this._bindClient(obs);
-    await withTimeout(obs.connect(this.url, this.password), CALL_TIMEOUT_MS, 'connexion à OBS');
+    // Les niveaux sonores (InputVolumeMeters) sont un évènement à haut volume, hors défaut :
+    // ils alimentent la détection de clips (module Clips).
+    await withTimeout(obs.connect(this.url, this.password, { eventSubscriptions: EventSubscription.All | EventSubscription.InputVolumeMeters }), CALL_TIMEOUT_MS, 'connexion à OBS');
     this.obs = obs;
     this.connected = true;
     this.lastError = null;
@@ -263,6 +266,46 @@ export class ObsController extends EventEmitter {
 
   async stopStream() {
     await this._call('StopStream');
+  }
+
+  // ---- Module Discord / Clips ----
+  async isStreaming() {
+    const { outputActive } = await this._call('GetStreamStatus');
+    this.streaming = outputActive;
+    return outputActive;
+  }
+
+  async isRecording() {
+    const { outputActive } = await this._call('GetRecordStatus');
+    return outputActive;
+  }
+
+  async startRecord() {
+    await this._call('StartRecord');
+  }
+
+  async replayBufferActive() {
+    const { outputActive } = await this._call('GetReplayBufferStatus');
+    return outputActive;
+  }
+
+  async startReplayBuffer() {
+    await this._call('StartReplayBuffer');
+  }
+
+  // Enregistre le Replay Buffer, puis sonde jusqu'à 5 s le chemin du dernier fichier.
+  async saveReplayBuffer(existsFn) {
+    await this._call('SaveReplayBuffer');
+    for (let i = 0; i < 5; i++) {
+      await new Promise((r) => setTimeout(r, 1000));
+      try {
+        const { savedReplayPath } = await this._call('GetLastReplayBufferReplay');
+        if (savedReplayPath && existsFn(savedReplayPath)) return savedReplayPath;
+      } catch {
+        // pas encore prêt : on retente
+      }
+    }
+    return null;
   }
 
   async setMicMuted(muted) {

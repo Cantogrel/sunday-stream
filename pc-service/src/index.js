@@ -15,9 +15,11 @@ import { Setup } from './setup.js';
 import { VERSION } from './version.js';
 import { ViewerStats } from './twitch/viewerStats.js';
 import { UpdateRelay } from './updater.js';
+import { createDiscordModules } from './discord/index.js';
 
 async function main() {
   const obs = new ObsController(config.obs);
+  const discord = createDiscordModules({ obs });
 
   const tokenManager = new TokenManager(config.twitch);
   const helix = new HelixClient({ clientId: config.twitch.clientId, tokenManager });
@@ -29,7 +31,9 @@ async function main() {
   // Vérifie que VB-Cable est bien présent dès le boot, mais n'ouvre le flux
   // audio natif qu'à la demande, pendant un envoi micro actif (voir
   // wsServer.js) — pas en continu depuis le boot.
-  await pcmPlayer.resolveDevice().catch((err) => {
+  // Module Couch désactivé (PC d'un ami, Discord seul) : ni audio, ni Twitch, ni annonce réseau.
+  const couchEnabled = discord.settings.get().modules.couch;
+  if (couchEnabled) await pcmPlayer.resolveDevice().catch((err) => {
     // Non fatal : le reste (OBS, chat, UI) doit fonctionner sans VB-Cable ;
     // start() réessaie à chaque envoi micro, l'assistant propose de l'installer.
     console.error('[audio] VB-Cable indisponible au démarrage:', err.message);
@@ -44,9 +48,9 @@ async function main() {
   const setup = new Setup({ obs, twitchService: twitch, deviceAuth, vbcable, getPhoneCount: () => server.getStatus().phones });
   const viewers = new ViewerStats({ helix, hasListeners: () => server.authedClients.size > 0 });
   const updater = new UpdateRelay();
-  server = new LocalWsServer({ port: config.localWs.port, token: config.localWs.token, obs, chat, helix, pcmPlayer, service: { version: VERSION }, devices, identity, setup, twitch, viewers, updater });
+  server = new LocalWsServer({ port: config.localWs.port, token: config.localWs.token, obs, chat, helix, pcmPlayer, service: { version: VERSION }, devices, identity, setup, twitch, viewers, updater, discord, shutdown: () => shutdown() });
   await server.start();
-  const stopAdvertising = advertise({ identity, port: config.localWs.port });
+  const stopAdvertising = couchEnabled ? advertise({ identity, port: config.localWs.port }) : () => {};
 
   // OBS peut être fermé au démarrage : on ne bloque pas le reste dessus.
   obs.on('status', ({ connected }) => {
@@ -54,10 +58,11 @@ async function main() {
     if (connected) learnObsPath();
   });
   obs.startConnecting();
+  discord.start();
 
   // Twitch après le serveur : sans jeton (premier lancement) ou sans réseau,
   // l'UI reste joignable et guide l'utilisateur au lieu d'être muette.
-  const hadTokens = await twitch.loadSaved();
+  const hadTokens = couchEnabled && (await twitch.loadSaved());
   if (hadTokens) {
     // Installation existante (jetons déjà présents) : pas d'assistant à imposer.
     if (!setup.hasSetupFile()) setup.markCompleted(true, true);
@@ -67,11 +72,16 @@ async function main() {
     console.log('[twitch] pas encore connecté — à faire dans l’assistant de configuration');
   }
 
+  // Arrêt propre : le module Discord poste « Stream terminé » si besoin avant de couper.
+  let shuttingDown = false;
   const shutdown = () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
     console.log('\nArrêt du service...');
     tokenManager.stop();
     stopAdvertising();
-    pcmPlayer.stop().finally(() => process.exit(0));
+    setTimeout(() => process.exit(0), 8000).unref();
+    discord.shutdown().catch(() => {}).finally(() => pcmPlayer.stop().finally(() => process.exit(0)));
   };
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);

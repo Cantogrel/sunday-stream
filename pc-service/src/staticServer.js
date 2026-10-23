@@ -127,10 +127,10 @@ async function readBody(req, limit = 4096) {
   return raw ? JSON.parse(raw) : {};
 }
 
-export function createStaticServer({ getStatus, getDiagnostics, setup, launchObs, devices, identity, listDevices, revokeDevice, service, getUpdate, checkUpdate, installUpdate }) {
+export function createStaticServer({ getStatus, getDiagnostics, setup, launchObs, devices, identity, listDevices, revokeDevice, service, getUpdate, checkUpdate, installUpdate, discord, shutdown }) {
   return createServer(async (req, res) => {
     const pathname = req.url.split('?')[0];
-    const PAGES = { '/': '/index.html', '/desktop': '/desktop.html', '/setup': '/setup.html', '/app': '/shell.html' };
+    const PAGES = { '/': '/index.html', '/desktop': '/desktop.html', '/setup': '/setup.html', '/app': '/shell.html', '/confirm': '/confirm.html' };
     const urlPath = PAGES[pathname] || pathname;
 
     // Routes LAN pour le téléphone (CORS : l'app tourne sur http://localhost).
@@ -186,6 +186,22 @@ export function createStaticServer({ getStatus, getDiagnostics, setup, launchObs
         try { installUpdate({ force: Boolean(body.force) }); return json({ ok: true }); } catch (err) { return json({ ok: false, error: err.message }); }
       }
       if (urlPath === '/api/obs/launch' && req.method === 'POST') return json(await launchObs());
+      // Arrêt propre demandé par l'app Windows avant de quitter (« Stream terminé » posté si besoin).
+      if (urlPath === '/api/shutdown' && req.method === 'POST') {
+        json({ ok: true });
+        setTimeout(() => shutdown?.(), 50);
+        return;
+      }
+      if (discord && (urlPath.startsWith('/api/discord') || urlPath.startsWith('/api/clips'))) {
+        let body = {};
+        try {
+          body = req.method === 'POST' ? await readBody(req, 16384) : {};
+        } catch {
+          // corps invalide : traité comme vide
+        }
+        const out = await discord.handle(req.method, urlPath, body).catch((err) => ({ ok: false, error: err.message }));
+        if (out) return json(out);
+      }
       if (urlPath.startsWith('/api/setup/')) {
         let body = {};
         try {

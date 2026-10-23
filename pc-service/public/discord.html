@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Discord</title>
+<style>
+  :root { --bg:#0d0d10; --card:#1a1a1f; --border:#2a2a30; --fg:#eee; --dim:#9a9aa2; --accent:#5865f2; --ok:#3ba55d; --bad:#ed4245; }
+  html, body { margin: 0; background: var(--bg); color: var(--fg); font-family: system-ui, "Segoe UI", sans-serif; }
+  main { max-width: 52rem; margin: 0 auto; padding: 1.2rem; }
+  h1 { font-size: 1.3rem; margin: 0 0 1rem; }
+  h2 { font-size: 1rem; margin: 0 0 .7rem; }
+  section { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1rem 1.2rem; margin-bottom: 1rem; }
+  label { display: block; font-size: .85rem; color: var(--dim); margin: .6rem 0 .2rem; }
+  input, select { width: 100%; box-sizing: border-box; background: #101014; color: var(--fg); border: 1px solid var(--border); border-radius: 8px; padding: .5rem .6rem; font: inherit; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 1rem; }
+  .row { display: flex; gap: .6rem; align-items: end; }
+  .row > * { flex: 1; } .row > button { flex: none; }
+  button { font: inherit; padding: .5rem .9rem; border-radius: 8px; border: 1px solid var(--border); background: #24242b; color: var(--fg); cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); }
+  button.danger { border-color: var(--bad); }
+  .check { display: flex; gap: .6rem; align-items: center; margin: .4rem 0; color: var(--fg); font-size: .95rem; }
+  .check input { width: auto; }
+  .dim { color: var(--dim); font-size: .85rem; }
+  .dot { display: inline-block; width: .6rem; height: .6rem; border-radius: 50%; background: #666; margin-right: .4rem; }
+  .dot.ok { background: var(--ok); } .dot.bad { background: var(--bad); }
+  pre { background: #101014; border: 1px solid var(--border); border-radius: 8px; padding: .6rem; max-height: 14rem; overflow: auto; font-size: .8rem; white-space: pre-wrap; margin: .6rem 0 0; }
+  #msg { min-height: 1.2rem; font-size: .9rem; margin: .4rem 0; }
+  .actions { display: flex; gap: .6rem; flex-wrap: wrap; margin-top: .8rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Discord</h1>
+
+  <section>
+    <h2>Modules de cette installation</h2>
+    <label class="check"><input type="checkbox" id="m_couch"> Couch Stream (téléphone, micro, chat Twitch)</label>
+    <label class="check"><input type="checkbox" id="m_discord"> Bot Discord (lancement du stream à l'arrivée au vocal)</label>
+    <label class="check"><input type="checkbox" id="m_clips"> Clips (Replay Buffer, publication et vote)</label>
+    <p class="dim">Sur le PC d'un ami, ne coche que Discord (et Clips). Le changement du module Couch s'applique au prochain démarrage de l'app.</p>
+  </section>
+
+  <section>
+    <h2>État</h2>
+    <div><span class="dot" id="stDot"></span><span id="stText">…</span></div>
+    <div class="actions">
+      <button id="btnStart">Connecter maintenant (test)</button>
+      <button id="btnStop">Déconnecter</button>
+    </div>
+    <pre id="log">—</pre>
+  </section>
+
+  <section>
+    <h2>Rejoindre un groupe</h2>
+    <p class="dim">Colle le code d'invitation reçu : il contient les salons (vocal, logs, clips), jamais le token.</p>
+    <div class="row"><div><input id="inviteIn" placeholder="SS1-…"></div><button id="btnApply">Appliquer</button></div>
+  </section>
+
+  <section>
+    <h2>Configuration</h2>
+    <label>Token du bot <span class="dim" id="tokState"></span></label>
+    <input id="token" type="password" placeholder="Laisser vide pour conserver le token enregistré" autocomplete="off">
+    <div class="grid">
+      <div><label>ID du salon vocal cible</label><input id="voice"></div>
+      <div><label>ID du salon de logs (vide = ni logs ni verrou)</label><input id="log_ch"></div>
+      <div><label>ID du salon des clips</label><input id="clips_ch"></div>
+      <div>
+        <label>Mon ID Discord</label>
+        <div class="row"><input id="uid"><button id="btnDetect">Détecter</button></div>
+      </div>
+      <div><label>Jour actif</label>
+        <select id="day">
+          <option value="Monday">Lundi</option><option value="Tuesday">Mardi</option><option value="Wednesday">Mercredi</option>
+          <option value="Thursday">Jeudi</option><option value="Friday">Vendredi</option><option value="Saturday">Samedi</option><option value="Sunday">Dimanche</option>
+        </select></div>
+      <div class="row">
+        <div><label>De (h)</label><input id="h0" type="number" min="0" max="23"></div>
+        <div><label>À (h)</label><input id="h1" type="number" min="0" max="23"></div>
+      </div>
+      <div><label>Scène OBS de démarrage</label><input id="scene"></div>
+      <div><label>Seuil de détection des clips (0–1)</label><input id="thr" type="number" step="0.05" min="0.05" max="1"></div>
+    </div>
+    <p class="dim">Le bot se connecte tout seul 30 min avant la plage et se ferme 30 min après la fin (sauf stream en cours). Plus aucune tâche planifiée Windows.</p>
+    <div id="msg"></div>
+    <div class="actions">
+      <button class="primary" id="btnSave">Enregistrer</button>
+      <button id="btnInvite">Générer un code d'invitation</button>
+    </div>
+    <pre id="inviteOut" style="display:none"></pre>
+  </section>
+
+  <section id="legacySec" style="display:none">
+    <h2>Reprendre l'ancien Sunday Stream Bot</h2>
+    <p class="dim" id="legacyInfo"></p>
+    <div class="actions">
+      <button id="btnImport">Importer la configuration</button>
+      <button id="btnRetire" class="danger">Arrêter l'ancien bot et supprimer ses 2 tâches planifiées</button>
+    </div>
+  </section>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const post = (p, b = {}) => fetch(p, { method: 'POST', body: JSON.stringify(b) }).then((r) => r.json());
+const say = (t, bad) => { $('msg').textContent = t; $('msg').style.color = bad ? 'var(--bad)' : 'var(--ok)'; };
+let loaded = false;
+
+function fill(s) {
+  const d = s.settings.discord;
+  $('m_couch').checked = s.settings.modules.couch;
+  $('m_discord').checked = s.settings.modules.discord;
+  $('m_clips').checked = s.settings.modules.clips;
+  $('voice').value = d.voiceChannelId; $('log_ch').value = d.logChannelId; $('clips_ch').value = d.clipsChannelId;
+  $('uid').value = d.userId; $('day').value = d.activeDay; $('h0').value = d.hourStart; $('h1').value = d.hourEnd;
+  $('scene').value = d.startingScene; $('thr').value = s.settings.clips.threshold;
+  $('tokState').textContent = s.hasToken ? '— enregistré (chiffré)' : '— non renseigné';
+}
+
+function collect() {
+  return {
+    token: $('token').value,
+    modules: { couch: $('m_couch').checked, discord: $('m_discord').checked, clips: $('m_clips').checked },
+    discord: { voiceChannelId: $('voice').value.trim(), logChannelId: $('log_ch').value.trim(), clipsChannelId: $('clips_ch').value.trim(), userId: $('uid').value.trim(), activeDay: $('day').value, hourStart: Number($('h0').value), hourEnd: Number($('h1').value), startingScene: $('scene').value.trim() },
+    clips: { threshold: Number($('thr').value) },
+  };
+}
+
+async function refresh() {
+  const s = await (await fetch('/api/discord', { cache: 'no-store' })).json();
+  if (!loaded) { fill(s); loaded = true; }
+  const b = s.bot;
+  $('stDot').className = 'dot ' + (b.ready ? 'ok' : (b.running ? '' : 'bad'));
+  $('stText').textContent = !s.settings.modules.discord ? 'Module désactivé'
+    : b.ready ? `Connecté (${b.user || '?'})${b.forced ? ' — mode test manuel' : ''}`
+    : b.jitterSeconds ? `Connexion dans ${b.jitterSeconds} s…`
+    : b.running ? 'Connexion en cours…'
+    : !s.configured ? 'Configuration incomplète'
+    : b.shouldRun ? 'Va se connecter' : 'En attente de la plage horaire (se connecte 30 min avant)';
+  $('log').textContent = b.log.length ? b.log.join('\n') : '—';
+}
+
+$('btnSave').onclick = async () => {
+  const r = await post('/api/discord/settings', collect());
+  if (r.ok) { $('token').value = ''; loaded = false; await refresh(); say('Enregistré.'); } else say(r.error || 'Échec.', true);
+};
+$('btnStart').onclick = async () => { const r = await post('/api/discord/start'); say(r.ok ? 'Connexion lancée.' : r.error, !r.ok); refresh(); };
+$('btnStop').onclick = async () => { await post('/api/discord/stop'); refresh(); };
+$('btnDetect').onclick = async () => {
+  say('Rejoins maintenant le salon vocal cible (2 min max)…');
+  const b = collect();
+  const r = await post('/api/discord/detect-id', { token: b.token, channelId: b.discord.voiceChannelId });
+  if (r.ok) { $('uid').value = r.id; say(`Détecté : ${r.name} (${r.id}).`); } else say(r.error, true);
+};
+$('btnInvite').onclick = async () => {
+  await $('btnSave').onclick();
+  const r = await post('/api/discord/invite/create');
+  if (r.ok) { $('inviteOut').style.display = 'block'; $('inviteOut').textContent = r.code; } else say(r.error, true);
+};
+$('btnApply').onclick = async () => {
+  const r = await post('/api/discord/invite/apply', { code: $('inviteIn').value });
+  if (r.ok) { loaded = false; await refresh(); say("Groupe rejoint. Renseigne maintenant ton token et ton ID (bouton Détecter), puis enregistre."); } else say(r.error, true);
+};
+
+(async () => {
+  const l = await (await fetch('/api/discord/legacy', { cache: 'no-store' })).json();
+  if (l.found || l.tasks.length) {
+    $('legacySec').style.display = 'block';
+    $('legacyInfo').textContent = `Ancien exe trouvé : ${l.exe || '?'} · tâches planifiées : ${l.tasks.join(', ') || 'aucune'}. ` + (l.preview ? 'Le token et le mot de passe OBS sont repris sans être affichés.' : '');
+  }
+})();
+$('btnImport').onclick = async () => { const r = await post('/api/discord/legacy/import'); if (r.ok) { loaded = false; await refresh(); say('Configuration importée.'); } else say(r.error, true); };
+$('btnRetire').onclick = async () => {
+  if (!confirm("Arrêter l'ancien bot et supprimer ses tâches planifiées ?\nSunday Stream prendra le relais (tu peux revenir en arrière en recréant les tâches depuis l'ancien exe).")) return;
+  const r = await post('/api/discord/legacy/retire');
+  say(r.ok ? r.notes.join(' ') : r.error, !r.ok);
+};
+
+refresh();
+setInterval(() => refresh().catch(() => {}), 3000);
+</script>
+</body>
+</html>

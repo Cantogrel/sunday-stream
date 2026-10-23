@@ -7,6 +7,7 @@
   "scripts": {
     "check-obs": "node scripts/check-obs.mjs",
     "start": "node src/index.js",
+    "test": "node --test \"test/**/*.test.js\"",
     "test-ws": "node scripts/test-ws-client.mjs"
   },
   "keywords": [],
@@ -14,6 +15,7 @@
   "license": "ISC",
   "dependencies": {
     "bonjour-service": "^1.4.4",
+    "discord.js": "^14.27.0",
     "dotenv": "^18.0.2",
     "node-web-audio-api": "^2.2.0",
     "obs-websocket-js": "^5.0.8",

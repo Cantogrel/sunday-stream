@@ -35,7 +35,7 @@ await build({
   platform: 'node',
   format: 'esm',
   target: 'node22',
-  external: ['node-web-audio-api', 'bufferutil', 'utf-8-validate'],
+  external: ['node-web-audio-api', 'bufferutil', 'utf-8-validate', 'zlib-sync', 'erlpack', '@discordjs/opus', 'sodium-native', 'libsodium-wrappers'],
   banner: { js: "import { createRequire as __sundayCreateRequire } from 'node:module'; const require = __sundayCreateRequire(import.meta.url);" },
   minifyWhitespace: true,
   minifySyntax: true,
