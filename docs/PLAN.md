@@ -44,7 +44,7 @@ Documents liés : `CONTRACT-ANDROID-V1.md`, `CONTRACT-DISCORD.md`, `BASELINE.md`
    commits `mathieu.cantogrel@gmail.com`. Le code Python n'y est **jamais** importé. Le dépôt `couch-stream-app` ne reçoit plus
    de release.
 7. **Nouvelle identité** : produit « Sunday Stream », identifiant `com.binagames.sundaystream`, données `%APPDATA%\SundayStream`,
-   dossier `E:\Stream\Sunday Stream`. **Migration au premier lancement** (phase 1/2) : fermer l'ancien Couch, copier ses données
+   dossier `E:\dev\Sunday Stream` (initialement `E:\Stream\Sunday Stream`, déplacé le 2026-10-23). **Migration au premier lancement** (phase 1/2) : fermer l'ancien Couch, copier ses données
    (sans les déplacer), importer le `.env` du bot, supprimer les tâches planifiées — toujours avec confirmation.
 
 ## 3. Points d'attention issus de la phase 0 (code réel)
@@ -75,7 +75,7 @@ Travail : sauvegardes, bot sous git local, vérification de Couch, contrats, mes
 - [ ] `CONTRACT-ANDROID-V1.md` et `CONTRACT-DISCORD.md` extraits du code réel.
 - [ ] `BASELINE.md` (tailles + checklist) et `PLAN.md` écrits.
 - [ ] Vault : `projects/sunday-stream/SUMMARY.md` + note de décision de fusion ; ancienne décision `superseded`.
-- [ ] Commit « Phase 0 : plan, contrats, mesures de départ » dans `E:\Stream\Sunday Stream`.
+- [ ] Commit « Phase 0 : plan, contrats, mesures de départ » dans `E:\dev\Sunday Stream` (alors `E:\Stream\Sunday Stream`).
 - [ ] Rien d'arrêté, désinstallé ou supprimé ; ancien Couch et ancien bot inchangés.
 
 ### Phase 1 — Squelette
