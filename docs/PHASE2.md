@@ -19,8 +19,8 @@ Réécriture du bot Discord en Node dans le service (`pc-service/src/discord/`),
 | Import de l'ancienne config + retrait des tâches planifiées (avec confirmation) | `legacy.js`, section Discord de l'app |
 | Arrêt propre au « Quitter » de l'icône (`POST /api/shutdown`) | `main.rs` (`graceful_stop`), `staticServer.js` |
 
-Tests : `npm test` dans `pc-service/` (17 tests : textes et marqueurs exacts, verrou, dédup, 4 choix,
-rappels, fin de stream, vote, invitation).
+Tests : `npm test` dans `pc-service/` (32 tests avec faux Discord/OBS : textes et marqueurs exacts, verrou, dédup, 4 choix,
+rappels, fin de stream, publication et vote des clips, détection OBS, planification, watchdog, invitation).
 
 ## Mapping des scores de clips (OBS à la place du PC)
 
