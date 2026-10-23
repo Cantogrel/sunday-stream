@@ -52,6 +52,7 @@ cd desktop && npm ci && npm run build             # prépare le sidecar puis tau
 APK Android : voir [mobile-app/README.md](mobile-app/README.md) (JDK 21, SDK Android, keystore hors dépôt).
 Publication et signature : [docs/RELEASE.md](docs/RELEASE.md).
 Installation côté utilisateur : [docs/INSTALLATION.md](docs/INSTALLATION.md).
+Migration depuis Couch Stream App et l'ancien exe : [docs/MIGRATION.md](docs/MIGRATION.md).
 
 ## Historique
 

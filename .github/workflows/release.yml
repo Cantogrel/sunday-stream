@@ -74,6 +74,10 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: npm run build
 
+      # Budget de taille (docs/PLAN.md §1.5) : une release trop lourde ne part pas.
+      - name: Contrôle de taille de l'installeur
+        run: node desktop/scripts/check-size.mjs 39.8
+
       - name: Manifeste de mise à jour
         run: node desktop/scripts/make-latest-json.mjs "${{ github.repository }}" "${{ github.ref_name }}" "Sunday Stream ${{ github.ref_name }}"
 

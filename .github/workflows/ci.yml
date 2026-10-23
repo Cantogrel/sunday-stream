@@ -1,0 +1,28 @@
+name: CI
+
+# Tests du service à chaque push et pull request. Aucune signature ni publication.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  service:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: pc-service/package-lock.json
+      - name: Tests du service
+        working-directory: pc-service
+        run: |
+          npm ci
+          npm test
+      - name: Tests des scripts de release
+        run: node --test desktop/test/check-size.test.js

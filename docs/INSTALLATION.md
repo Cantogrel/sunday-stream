@@ -1,18 +1,38 @@
-# Installation en 5 minutes
+# Installer Sunday Stream
 
-Sunday Stream te laisse piloter ton stream (OBS + chat Twitch) depuis ton
-téléphone, avec le micro du téléphone envoyé dans le stream. Il y a deux
-morceaux : l'application **Windows** (sur le PC qui fait tourner OBS) et
-l'application **Android**.
+Sunday Stream est l'application Windows du groupe pour le stream du dimanche soir. Selon ce que tu veux en faire,
+tu actives un ou plusieurs **modules** :
+
+| Module | Pour qui | Ce que ça fait |
+|---|---|---|
+| **Discord** | Tous ceux qui peuvent lancer le stream | Détecte ton arrivée dans le salon vocal, propose « Lancer le stream ? », évite que deux personnes streament en même temps |
+| **Clips** | Idem (optionnel) | Sauvegarde le Replay Buffer d'OBS, publie le clip sur Discord, vote des admins |
+| **Canapé** | Le diffuseur (chaîne Twitch) | Pilote OBS et le chat Twitch depuis le téléphone Android, avec le micro du téléphone |
+
+> **Tu viens juste rejoindre le groupe Discord ?** Va directement au [parcours « ami »](#parcours-ami--rejoindre-le-groupe-discord).
+> Tu n'as besoin ni d'Android, ni de compte Twitch, ni de VB-Cable.
 
 ## Ce qu'il te faut
 
-- Un PC **Windows 10 ou 11**.
-- **OBS Studio 28 ou plus récent** ([obsproject.com](https://obsproject.com/fr/download)),
-  déjà configuré avec ta scène de stream. Le serveur WebSocket dont on a besoin
-  est intégré à OBS depuis la version 28.
-- Un compte **Twitch** (celui de la chaîne que tu veux piloter).
-- Un téléphone **Android**, sur le **même Wi-Fi** que le PC.
+- Un PC **Windows 10 ou 11** avec **OBS Studio 28 ou plus récent** ([obsproject.com](https://obsproject.com/fr/download)),
+  déjà configuré avec ta scène de stream (le serveur WebSocket est intégré à OBS depuis la version 28).
+- Pour le module Canapé seulement : un compte **Twitch** (celui de la chaîne) et un téléphone **Android** sur le
+  **même Wi-Fi** que le PC.
+
+## Parcours ami — rejoindre le groupe Discord
+
+1. Installe l'application (étape 1 ci-dessous). La page « Bienvenue » du premier lancement concerne le module Canapé : tu peux la fermer.
+2. L'administrateur du groupe t'envoie **deux choses, séparément** : le **code d'invitation** (`SS1-…`) et le
+   **token du bot**. Le code ne contient que des identifiants de salons, jamais le token : ne les envoie pas dans le
+   même message.
+3. Dans la fenêtre : **Discord → Rejoindre un groupe**, colle le code, **Appliquer**.
+4. Colle le token dans **Configuration → Token du bot**, puis **Détecter** à côté de « Mon ID Discord » (rejoins le
+   salon vocal quand l'appli te le demande) et **Enregistrer**.
+5. Dans **Modules de cette installation**, laisse **Discord** coché (et **Clips** si tu veux), décoche **Canapé**.
+6. Ouvre OBS (WebSocket activé) puis **Connecter maintenant (test)** : l'état doit passer à « connecté ».
+
+À partir de là, le dimanche soir, l'appli se connecte toute seule 30 min avant le début et se ferme 30 min après la
+fin : rien d'autre à lancer.
 
 ## Étape 1 — Installer l'application Windows
 
@@ -25,7 +45,7 @@ l'application **Android**.
    derrière la flèche `^`). Le service démarre tout seul, y compris à chaque
    démarrage de Windows.
 
-## Étape 2 — L'assistant de configuration
+## Étape 2 — L'assistant de configuration (module Canapé)
 
 Au premier lancement, une page « Bienvenue dans Sunday Stream » s'ouvre. Tu
 peux la rouvrir à tout moment : clic droit sur l'icône → **Assistant de
@@ -50,7 +70,7 @@ configuration**. Chaque étape se vérifie toute seule.
 5. **Ton téléphone** — deux QR codes : le premier télécharge l'application
    Android, le second la jumelle avec ce PC.
 
-## Étape 3 — L'application Android
+## Étape 3 — L'application Android (module Canapé)
 
 1. Scanne le premier QR avec l'appareil photo du téléphone : le fichier
    `CouchStream.apk` se télécharge.
@@ -88,11 +108,12 @@ passe ni jeton** n'y figure.
 | Pas de son du téléphone dans OBS | VB-Cable absent (étape 2) ou source micro non créée (étape 4). Si l'installation de VB-Cable vient d'être faite, redémarre le PC. |
 | Le téléphone ne trouve pas le PC | Même Wi-Fi ? Le pare-feu Windows a-t-il autorisé « Sunday Stream » sur les réseaux privés ? Bouton « Chercher le PC sur le réseau » dans les Réglages de l'app. |
 | « Jumelage refusé par le PC » | Le téléphone a été oublié côté PC : rejumelle-le par QR. |
+| « Connexion Discord impossible » | Token du bot incorrect ou collé avec un espace : recopie-le sans espace ni guillemets. |
+| Aucune fenêtre « Lancer le stream ? » | Hors fenêtre active (jour/heures du groupe), ou un stream est déjà en cours (verrou Discord), ou « plus de rappel ce soir » a été choisi. Journal dans Discord → État. |
 | Le chat Twitch ne se connecte pas | Étape 3 de l'assistant à refaire (le jeton a peut-être expiré ou été révoqué). |
 
 ## Confidentialité
 
-Aucune télémétrie. Tout reste sur ton réseau local : le téléphone parle
-directement au PC. Les jetons Twitch sont chiffrés avec ton compte Windows. Les
-seules connexions sortantes sont Twitch (chat/modération), le téléchargement de
-VB-Cable et la vérification des mises à jour.
+Aucune télémétrie. Le téléphone parle directement au PC, sur ton réseau local. Les jetons Twitch sont chiffrés avec ton compte Windows. Le token Discord est chiffré de la même façon. Les
+seules connexions sortantes sont Discord, Twitch (chat/modération), le téléchargement de
+VB-Cable (et de ffmpeg pour les clips) et la vérification des mises à jour.

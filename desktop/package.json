@@ -5,6 +5,7 @@
   "scripts": {
     "stage": "node scripts/stage-sidecar.mjs",
     "build": "node scripts/build.mjs",
+    "check-size": "node scripts/check-size.mjs",
     "tauri": "tauri"
   },
   "devDependencies": {
