@@ -4,7 +4,7 @@
 // est une page du service affichée dans la zone de contenu (même origine, donc
 // la console et l'assistant existants sont réutilisés tels quels).
 const SECTIONS = {
-  live: { url: '/desktop?view=live' },
+  live: { url: '/live.html' },
   obs: { url: '/desktop?view=obs' },
   chat: { url: '/desktop?view=chat' },
   phone: { url: '/desktop?view=phone' },

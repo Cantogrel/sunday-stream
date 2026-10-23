@@ -93,6 +93,31 @@ export function lockState(markers, nowUtcMs) {
   return { held: true };
 }
 
+// Nom de la personne indiquée dans « 🔴 Stream lancé par **Bob** à 21h07. ».
+export function parseStreamer(description) {
+  const m = /lancé par \*\*(.+?)\*\*/.exec(description || '');
+  return m ? m[1] : null;
+}
+
+// Détail du verrou pour le tableau de bord : qui diffuse et depuis quand.
+// `messages` : [{ authorId, createdAt, footers, description }], du plus récent au plus ancien.
+export function lockDetails(messages, clientId, nowUtcMs) {
+  const markers = findMarkers(messages, clientId, new Set(['stream', 'end']));
+  const st = lockState(markers, nowUtcMs);
+  let by = null;
+  if (st.held) {
+    const msg = messages.find((m) => m.authorId === clientId && m.createdAt === markers.stream
+      && m.footers.some((f) => f && f.startsWith(`${MARKER_PREFIX}|stream|`)));
+    by = parseStreamer(msg?.description);
+  }
+  return {
+    held: Boolean(st.held),
+    by,
+    since: st.held ? markers.stream.getTime() : null,
+    lastEnd: markers.end ? markers.end.getTime() : null,
+  };
+}
+
 // ---- Clips ----
 export const CLIP_STATUS = {
   pending: { label: '⏳ En attente de validation', color: 0x5865f2 },

@@ -3,9 +3,10 @@ import { Client, EmbedBuilder, GatewayIntentBits, Partials } from 'discord.js';
 import { launchObs } from '../obsLocator.js';
 import {
   CHOICE, EMBED_COLOR, HISTORY_LIMIT, LOG_TEXT, STARTUP_JITTER_MAX,
-  botShouldRun, dayName, findMarkers, isWindowActive, lockState, markerFooter, stopAt,
+  botShouldRun, dayName, findMarkers, isWindowActive, lockDetails, lockState, markerFooter, stopAt,
 } from './logic.js';
 
+const LIVE_LOCK_TTL_MS = 15_000;
 const WATCHDOG_MS = 3000;
 const SCHEDULER_MS = 15_000;
 const OBS_WAIT_MS = 40_000;
@@ -301,12 +302,39 @@ export class DiscordBot extends EventEmitter {
     }
   }
 
+  async _history(channel) {
+    const fetched = await channel.messages.fetch({ limit: HISTORY_LIMIT });
+    return [...fetched.values()]
+      .sort((a, b) => b.createdTimestamp - a.createdTimestamp)
+      .map((m) => ({
+        authorId: m.author.id,
+        createdAt: m.createdAt,
+        footers: m.embeds.map((e) => e.footer?.text || ''),
+        description: m.embeds.map((e) => e.description || '').join(' '),
+      }));
+  }
+
+  // Qui diffuse sur la chaîne d'après le verrou Discord (tableau de bord « En direct »).
+  // Lecture mise en cache : l'écran se rafraîchit toutes les quelques secondes.
+  async liveLock() {
+    const cached = this._liveLock;
+    if (cached && Date.now() - cached.at < LIVE_LOCK_TTL_MS) return cached.value;
+    let value = { available: false };
+    const ch = this.ready ? await this._logChannel() : null;
+    if (ch) {
+      try {
+        value = { available: true, ...lockDetails(await this._history(ch), this.client.user.id, Date.now()) };
+      } catch {
+        // historique illisible (permission) : le tableau de bord retombe sur OBS seul
+      }
+    }
+    this._liveLock = { at: Date.now(), value };
+    return value;
+  }
+
   async _findMarkers(channel, wanted, day = null) {
     try {
-      const fetched = await channel.messages.fetch({ limit: HISTORY_LIMIT });
-      const messages = [...fetched.values()]
-        .sort((a, b) => b.createdTimestamp - a.createdTimestamp)
-        .map((m) => ({ authorId: m.author.id, createdAt: m.createdAt, footers: m.embeds.map((e) => e.footer?.text || '') }));
+      const messages = await this._history(channel);
       return findMarkers(messages, this.client.user.id, wanted, day);
     } catch (err) {
       if (err.code === 50013 || err.status === 403) this.log("(logs) permission « Voir l'historique des messages » manquante — verrou/anti-doublon ignorés.");

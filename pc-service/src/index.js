@@ -46,7 +46,7 @@ async function main() {
   const vbcable = new VbCableInstaller({ pcmPlayer });
   let server;
   const setup = new Setup({ obs, twitchService: twitch, deviceAuth, vbcable, getPhoneCount: () => server.getStatus().phones });
-  const viewers = new ViewerStats({ helix, hasListeners: () => server.authedClients.size > 0 });
+  const viewers = new ViewerStats({ helix, hasListeners: () => server.authedClients.size > 0 || Date.now() - (viewers.watchedAt || 0) < 15_000 });
   const updater = new UpdateRelay();
   server = new LocalWsServer({ port: config.localWs.port, token: config.localWs.token, obs, chat, helix, pcmPlayer, service: { version: VERSION }, devices, identity, setup, twitch, viewers, updater, discord, shutdown: () => shutdown() });
   await server.start();

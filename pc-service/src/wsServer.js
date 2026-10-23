@@ -4,6 +4,7 @@ import { createStaticServer } from './staticServer.js';
 import { launchObs } from './obsLocator.js';
 import { MIN_APP_PROTOCOL, PROTOCOL } from './version.js';
 import { buildReport } from './diagnostics.js';
+import { buildLive } from './live.js';
 import { randomBytes } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { config } from './config.js';
@@ -41,7 +42,7 @@ export class LocalWsServer {
   async start() {
     // Même port pour les fichiers statiques (public/, testable depuis le
     // téléphone en HTTP) et le WebSocket (upgrade sur le même serveur HTTP).
-    this.httpServer = createStaticServer({ getStatus: () => this.getStatus(), setup: this.setup, getDiagnostics: () => buildReport(this), launchObs, devices: this.devices, identity: this.identity, listDevices: () => this.listDevices(), revokeDevice: (id) => this.revokeDevice(id), service: this.service, getUpdate: () => this.updater.status(), checkUpdate: () => this.checkUpdate(), installUpdate: (opts) => this.installUpdate(opts), discord: this.discord, shutdown: this.shutdown });
+    this.httpServer = createStaticServer({ getStatus: () => this.getStatus(), setup: this.setup, getDiagnostics: () => buildReport(this), launchObs, devices: this.devices, identity: this.identity, listDevices: () => this.listDevices(), revokeDevice: (id) => this.revokeDevice(id), service: this.service, getUpdate: () => this.updater.status(), checkUpdate: () => this.checkUpdate(), installUpdate: (opts) => this.installUpdate(opts), discord: this.discord, shutdown: this.shutdown, getLive: () => buildLive({ obs: this.obs, discord: this.discord, chat: this.chat, viewers: this.viewers }) });
     this.wss = new WebSocketServer({ server: this.httpServer });
     this.wss.on('error', () => {}); // les erreurs d'écoute sont traitées ci-dessous
     await this._listenWithFallback();

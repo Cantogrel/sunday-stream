@@ -127,7 +127,7 @@ async function readBody(req, limit = 4096) {
   return raw ? JSON.parse(raw) : {};
 }
 
-export function createStaticServer({ getStatus, getDiagnostics, setup, launchObs, devices, identity, listDevices, revokeDevice, service, getUpdate, checkUpdate, installUpdate, discord, shutdown }) {
+export function createStaticServer({ getStatus, getDiagnostics, setup, launchObs, devices, identity, listDevices, revokeDevice, service, getUpdate, checkUpdate, installUpdate, discord, shutdown, getLive }) {
   return createServer(async (req, res) => {
     const pathname = req.url.split('?')[0];
     const PAGES = { '/': '/index.html', '/desktop': '/desktop.html', '/setup': '/setup.html', '/app': '/shell.html', '/confirm': '/confirm.html' };
@@ -166,7 +166,8 @@ export function createStaticServer({ getStatus, getDiagnostics, setup, launchObs
         res.end(JSON.stringify(obj));
       };
       if (urlPath === '/api/status' && req.method === 'GET') return json(getStatus());
-      if (urlPath === '/api/diagnostics' && req.method === 'GET') return json({ text: await getDiagnostics() });
+      if (urlPath === '/api/live' && req.method === 'GET') return json(await getLive());
+      if (urlPath === '/api/diagnostics'&& req.method === 'GET') return json({ text: await getDiagnostics() });
       // La console PC (/desktop) s'authentifie seule : token servi uniquement
       // à la boucle locale, jamais au LAN.
       if (urlPath === '/api/session' && req.method === 'GET') return json({ token: config.localWs.token });
