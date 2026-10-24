@@ -35,7 +35,9 @@ autres entrées (audio du jeu). Pondérations 0,3 / 0,3 / 0,4, seuil, 3 ticks co
   un token et des salons réels.
 - **ffmpeg** téléchargé au premier usage (compression au-dessus de la limite Discord, rognage) : non fait.
   Un clip trop gros est publié sans pièce jointe avec son chemin local, comme l'ancien exe.
-- **Raccourci clavier global** et `!clip` Twitch : non faits (bouton de l'app et `/clip` disponibles).
+- **Raccourci clavier global** (modifiable dans Discord → Clips, défaut Ctrl+Alt+C) : fait. Le service écrit `hotkey.json`,
+  l'app Windows (`watch_hotkey`) l'enregistre via `tauri-plugin-global-shortcut`. `!clip` Twitch : non fait.
+- **Replay Buffer** démarré avec le stream quand Clips est actif ; option « arrêter enregistrement et Replay Buffer à l'arrêt du stream ».
 - La commande `/clip` exige le scope `applications.commands` à l'invitation du bot ; sinon elle n'est pas
   enregistrée (journalisé) et le bouton reste disponible.
 - Le choix des modules se fait dans la section Discord, pas encore dans l'assistant de premier lancement.

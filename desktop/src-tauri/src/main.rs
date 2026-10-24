@@ -11,6 +11,7 @@ use std::time::Duration;
 use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 use tauri_plugin_opener::OpenerExt;
@@ -325,6 +326,13 @@ mod tests {
     }
 
     #[test]
+    fn parses_hotkeys_written_by_the_service() {
+        for h in ["Ctrl+Alt+C", "Ctrl+Shift+F9", "Alt+7", "Super+Shift+Z", "Ctrl+Alt+Shift+F24"] {
+            assert!(h.parse::<tauri_plugin_global_shortcut::Shortcut>().is_ok(), "{h}");
+        }
+    }
+
+    #[test]
     fn detects_couch_data() {
         let d = tmp("detect");
         assert!(!couch_data_present(&d));
@@ -540,6 +548,56 @@ fn show_confirm(app: &AppHandle, dir: &Path, timeout_ms: u64) {
     });
 }
 
+// Raccourci clavier global de clip. Le service écrit hotkey.json (activé + combinaison) ;
+// on le relit toutes les 2 s et on (ré)enregistre. Un appui demande un clip au service.
+fn trigger_clip(dir: &Path) {
+    let port = local_port(dir);
+    let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
+    if let Ok(mut stream) = std::net::TcpStream::connect_timeout(&addr, Duration::from_millis(400)) {
+        use std::io::Write;
+        let crlf = String::from_utf8(vec![13, 10]).unwrap_or_default();
+        let req = [format!("POST /api/clips/trigger HTTP/1.1"), format!("Host: 127.0.0.1:{port}"), "Content-Length: 2".to_string(), "Connection: close".to_string(), String::new(), "{}".to_string()].join(&crlf);
+        let _ = stream.write_all(req.as_bytes());
+    }
+}
+
+fn watch_hotkey(app: AppHandle, dir: PathBuf) {
+    thread::spawn(move || {
+        let mut tried = String::new();
+        loop {
+            thread::sleep(Duration::from_secs(2));
+            let want = fs::read_to_string(dir.join("hotkey.json"))
+                .ok()
+                .and_then(|r| serde_json::from_str::<serde_json::Value>(&r).ok())
+                .and_then(|v| if v["enabled"].as_bool() == Some(true) { v["hotkey"].as_str().map(String::from) } else { None })
+                .unwrap_or_default();
+            if want == tried {
+                continue;
+            }
+            tried = want.clone();
+            let gs = app.global_shortcut();
+            let _ = gs.unregister_all();
+            if want.is_empty() {
+                continue;
+            }
+            match want.parse::<Shortcut>() {
+                Ok(sc) => {
+                    let d = dir.clone();
+                    if let Err(e) = gs.on_shortcut(sc, move |_app, _sc, ev| {
+                        if ev.state() == ShortcutState::Pressed {
+                            let d = d.clone();
+                            thread::spawn(move || trigger_clip(&d));
+                        }
+                    }) {
+                        eprintln!("[hotkey] enregistrement de « {want} » impossible : {e}");
+                    }
+                }
+                Err(e) => eprintln!("[hotkey] combinaison « {want} » invalide : {e}"),
+            }
+        }
+    });
+}
+
 fn watch_confirm_requests(app: AppHandle, dir: PathBuf) {
     thread::spawn(move || loop {
         thread::sleep(Duration::from_millis(500));
@@ -564,6 +622,7 @@ fn main() {
         }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--autostart"])))
         .setup(|app| {
@@ -603,6 +662,7 @@ fn main() {
             write_status(&dir, serde_json::json!({ "state": "idle", "current": app.package_info().version.to_string() }));
             watch_update_requests(app.handle().clone(), dir.clone());
             watch_confirm_requests(app.handle().clone(), dir.clone());
+            watch_hotkey(app.handle().clone(), dir.clone());
             {
                 let handle = app.handle().clone();
                 let dir = dir.clone();

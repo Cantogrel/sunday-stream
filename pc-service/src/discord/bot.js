@@ -80,6 +80,7 @@ export class DiscordBot extends EventEmitter {
       ready: this.ready,
       forced: this.forced,
       user: this.client?.user?.tag || null,
+      inviteUrl: this.client?.user?.id ? `https://discord.com/oauth2/authorize?client_id=${this.client.user.id}&scope=bot%20applications.commands&permissions=117824` : null,
       windowActive: isWindowActive(now, c),
       shouldRun: botShouldRun(now, c),
       jitterSeconds: this.jitterEndsAt > Date.now() ? Math.ceil((this.jitterEndsAt - Date.now()) / 1000) : 0,

@@ -1,4 +1,7 @@
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { setEnvVar } from '../envFile.js';
+import { DATA_DIR } from '../paths.js';
 import { DiscordBot } from './bot.js';
 import { ClipsModule } from './clips.js';
 import { ConfirmDialog } from './confirm.js';
@@ -12,6 +15,19 @@ export function createDiscordModules({ obs }) {
   const confirm = new ConfirmDialog();
   const bot = new DiscordBot({ obs, settings, confirm });
   const clips = new ClipsModule({ obs, bot, settings });
+
+  // L'app Windows lit hotkey.json (comme confirm-request.json) pour enregistrer
+  // le raccourci clavier global de clip ; elle le relit toutes les 2 s.
+  function syncHotkey() {
+    const s = settings.get();
+    const enabled = s.modules.clips && Boolean(s.discord.clipsChannelId) && Boolean(s.clips.hotkey);
+    try {
+      mkdirSync(DATA_DIR, { recursive: true });
+      writeFileSync(join(DATA_DIR, 'hotkey.json'), JSON.stringify({ enabled, hotkey: s.clips.hotkey }));
+    } catch (err) {
+      console.error('[clips] hotkey.json non écrit:', err.message);
+    }
+  }
 
   const publicState = async () => ({
     settings: settings.get(),
@@ -32,6 +48,7 @@ export function createDiscordModules({ obs }) {
         const prev = settings.get();
         if (typeof body.token === 'string' && body.token.trim()) await settings.setToken(body.token);
         settings.update({ modules: body.modules, discord: body.discord, clips: body.clips });
+        syncHotkey();
         // Modules : un module désactivé coupe immédiatement le bot.
         if (!settings.get().modules.discord && bot.running) await bot.stop('Module Discord désactivé');
         if (prev.discord.userId !== settings.get().discord.userId && bot.running) await bot.stop('Réglages modifiés');
@@ -72,6 +89,7 @@ export function createDiscordModules({ obs }) {
           const discord = {};
           for (const [k, v] of Object.entries(ids)) if (v) discord[k] = v;
           settings.update({ discord, modules: { discord: true, clips: Boolean(ids.clipsChannelId) } });
+          syncHotkey();
           return { ok: true, ...(await publicState()) };
         } catch (err) {
           return { ok: false, error: err.message };
@@ -93,6 +111,7 @@ export function createDiscordModules({ obs }) {
         const m = readLegacyEnv(l.envPath);
         if (m.token) await settings.setToken(m.token);
         settings.update({ discord: m.discord, clips: m.clips, modules: m.modules });
+        syncHotkey();
         // OBS partagé : n'écrase pas une configuration OBS déjà faite.
         if (m.obs.password && m.obs.url && !obs.password) {
           setEnvVar('OBS_WEBSOCKET_URL', m.obs.url);
@@ -117,6 +136,7 @@ export function createDiscordModules({ obs }) {
   return {
     settings, confirm, bot, clips, handle,
     start() {
+      syncHotkey();
       clips.start();
       bot.startScheduler();
     },

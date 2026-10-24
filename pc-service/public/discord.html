@@ -48,6 +48,7 @@
       <button id="btnStart">Connecter maintenant (test)</button>
       <button id="btnStop">Déconnecter</button>
     </div>
+    <p class="dim" id="inviteLine" style="display:none">Pour que la commande <b>/clip</b> existe sur Discord, invite (ou réinvite) le bot avec ce lien : <a id="inviteUrl" target="_blank" rel="noopener" style="color:var(--accent)">lien d'invitation</a></p>
     <pre id="log">—</pre>
   </section>
 
@@ -90,6 +91,16 @@
     <pre id="inviteOut" style="display:none"></pre>
   </section>
 
+  <section>
+    <h2>Clips</h2>
+    <p class="dim">Quand le module Clips est coché, le Replay Buffer d'OBS démarre tout seul avec le stream (à activer une fois dans OBS : Réglages → Sortie → Enregistrement).</p>
+    <label class="check"><input type="checkbox" id="c_stop"> Quand le stream s'arrête, arrêter aussi l'enregistrement et le Replay Buffer</label>
+    <label>Raccourci clavier pour faire un clip <span class="dim">(global, actif même dans le jeu)</span></label>
+    <div class="row"><input id="hotkey" readonly placeholder="Clique ici puis appuie sur ta combinaison (ex. Ctrl+Alt+C)"><button id="btnHkClear">Effacer</button></div>
+    <p class="dim">Il faut au moins une touche Ctrl, Alt, Maj ou Windows, plus une lettre, un chiffre ou une touche F1–F24. Pris en compte après « Enregistrer » (quelques secondes). Sur Discord, la commande <b>/clip</b> fait la même chose.</p>
+    <div class="actions"><button class="primary" id="btnSave2">Enregistrer</button></div>
+  </section>
+
   <section id="legacySec" style="display:none">
     <h2>Reprendre l'ancien Sunday Stream Bot</h2>
     <p class="dim" id="legacyInfo"></p>
@@ -97,6 +108,7 @@
       <button id="btnImport">Importer la configuration</button>
       <button id="btnRetire" class="danger">Arrêter l'ancien bot et supprimer ses 2 tâches planifiées</button>
     </div>
+    <p id="legacyMsg" style="min-height:1.2rem;font-size:.9rem;margin:.6rem 0 0"></p>
   </section>
 </main>
 <script>
@@ -113,6 +125,7 @@ function fill(s) {
   $('voice').value = d.voiceChannelId; $('log_ch').value = d.logChannelId; $('clips_ch').value = d.clipsChannelId;
   $('uid').value = d.userId; $('day').value = d.activeDay; $('h0').value = d.hourStart; $('h1').value = d.hourEnd;
   $('scene').value = d.startingScene; $('thr').value = s.settings.clips.threshold;
+  $('c_stop').checked = s.settings.clips.stopWithStream; $('hotkey').value = s.settings.clips.hotkey;
   $('tokState').textContent = s.hasToken ? '— enregistré (chiffré)' : '— non renseigné';
 }
 
@@ -121,7 +134,7 @@ function collect() {
     token: $('token').value,
     modules: { couch: $('m_couch').checked, discord: $('m_discord').checked, clips: $('m_clips').checked },
     discord: { voiceChannelId: $('voice').value.trim(), logChannelId: $('log_ch').value.trim(), clipsChannelId: $('clips_ch').value.trim(), userId: $('uid').value.trim(), activeDay: $('day').value, hourStart: Number($('h0').value), hourEnd: Number($('h1').value), startingScene: $('scene').value.trim() },
-    clips: { threshold: Number($('thr').value) },
+    clips: { threshold: Number($('thr').value), stopWithStream: $('c_stop').checked, hotkey: $('hotkey').value },
   };
 }
 
@@ -129,6 +142,8 @@ async function refresh() {
   const s = await (await fetch('/api/discord', { cache: 'no-store' })).json();
   if (!loaded) { fill(s); loaded = true; }
   const b = s.bot;
+  $('inviteLine').style.display = b.inviteUrl ? 'block' : 'none';
+  if (b.inviteUrl) $('inviteUrl').href = b.inviteUrl;
   $('stDot').className = 'dot ' + (b.ready ? 'ok' : (b.running ? '' : 'bad'));
   $('stText').textContent = !s.settings.modules.discord ? 'Module désactivé'
     : b.ready ? `Connecté (${b.user || '?'})${b.forced ? ' — mode test manuel' : ''}`
@@ -143,6 +158,7 @@ $('btnSave').onclick = async () => {
   const r = await post('/api/discord/settings', collect());
   if (r.ok) { $('token').value = ''; loaded = false; await refresh(); say('Enregistré.'); } else say(r.error || 'Échec.', true);
 };
+$('btnSave2').onclick = () => $('btnSave').onclick();
 $('btnStart').onclick = async () => { const r = await post('/api/discord/start'); say(r.ok ? 'Connexion lancée.' : r.error, !r.ok); refresh(); };
 $('btnStop').onclick = async () => { await post('/api/discord/stop'); refresh(); };
 $('btnDetect').onclick = async () => {
@@ -156,6 +172,17 @@ $('btnInvite').onclick = async () => {
   const r = await post('/api/discord/invite/create');
   if (r.ok) { $('inviteOut').style.display = 'block'; $('inviteOut').textContent = r.code; } else say(r.error, true);
 };
+$('hotkey').addEventListener('keydown', (e) => {
+  e.preventDefault();
+  if (['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) return;
+  const mods = [e.ctrlKey && 'Ctrl', e.altKey && 'Alt', e.shiftKey && 'Shift', e.metaKey && 'Super'].filter(Boolean);
+  const m = /^(?:Key([A-Z])|Digit(\d)|(F\d{1,2}))$/.exec(e.code);
+  const key = m && (m[1] || m[2] || m[3]);
+  if (!mods.length || !key) { say('Combinaison invalide : au moins Ctrl/Alt/Maj/Windows + une lettre, un chiffre ou une touche F.', true); return; }
+  $('hotkey').value = [...mods, key].join('+');
+  say('Raccourci choisi : ' + $('hotkey').value + ' — clique sur « Enregistrer ».');
+});
+$('btnHkClear').onclick = () => { $('hotkey').value = ''; say('Raccourci effacé — clique sur « Enregistrer ».'); };
 $('btnApply').onclick = async () => {
   const r = await post('/api/discord/invite/apply', { code: $('inviteIn').value });
   if (r.ok) { loaded = false; await refresh(); say("Groupe rejoint. Renseigne maintenant ton token et ton ID (bouton Détecter), puis enregistre."); } else say(r.error, true);
@@ -167,12 +194,32 @@ $('btnApply').onclick = async () => {
     $('legacySec').style.display = 'block';
     $('legacyInfo').textContent = `Ancien exe trouvé : ${l.exe || '?'} · tâches planifiées : ${l.tasks.join(', ') || 'aucune'}. ` + (l.preview ? 'Le token et le mot de passe OBS sont repris sans être affichés.' : '');
   }
+  else if (localStorage.getItem('legacyRetired')) {
+    $('legacySec').style.display = 'block';
+    $('legacyInfo').textContent = `✅ Ancien bot retiré le ${localStorage.getItem('legacyRetired')}. Sunday Stream gère maintenant la planification.`;
+    $('btnImport').style.display = 'none'; $('btnRetire').style.display = 'none';
+  }
 })();
-$('btnImport').onclick = async () => { const r = await post('/api/discord/legacy/import'); if (r.ok) { loaded = false; await refresh(); say('Configuration importée.'); } else say(r.error, true); };
+const legacySay = (t, bad) => { $('legacyMsg').textContent = t; $('legacyMsg').style.color = bad ? 'var(--bad)' : 'var(--ok)'; };
+$('btnImport').onclick = async () => {
+  legacySay('Import en cours…');
+  const r = await post('/api/discord/legacy/import').catch(() => ({ ok: false, error: 'Service injoignable.' }));
+  if (r.ok) { loaded = false; await refresh(); legacySay('✅ Configuration importée (token compris, non affiché). Vérifie les champs ci-dessus.'); } else legacySay(r.error, true);
+};
 $('btnRetire').onclick = async () => {
-  if (!confirm("Arrêter l'ancien bot et supprimer ses tâches planifiées ?\nSunday Stream prendra le relais (tu peux revenir en arrière en recréant les tâches depuis l'ancien exe).")) return;
-  const r = await post('/api/discord/legacy/retire');
-  say(r.ok ? r.notes.join(' ') : r.error, !r.ok);
+  if (!confirm("Arrêter l'ancien bot et supprimer ses tâches planifiées ?\nSunday Stream prendra le relais.")) return;
+  $('btnRetire').disabled = true; $('btnImport').disabled = true;
+  legacySay("Arrêt de l'ancien bot et suppression des tâches en cours (jusqu'à 30 s)…");
+  const r = await post('/api/discord/legacy/retire').catch(() => ({ ok: false, error: 'Service injoignable.' }));
+  if (r.ok) {
+    legacySay('✅ ' + r.notes.join(' '));
+    $('legacyInfo').textContent = 'Ancien bot retiré. Sunday Stream gère maintenant la planification.';
+    $('btnRetire').style.display = 'none'; $('btnImport').style.display = 'none';
+    try { localStorage.setItem('legacyRetired', new Date().toLocaleString('fr-FR')); } catch { /* sans conséquence */ }
+  } else {
+    legacySay(r.error || 'Échec.', true);
+    $('btnRetire').disabled = false; $('btnImport').disabled = false;
+  }
 };
 
 refresh();

@@ -64,6 +64,9 @@ export class ClipsModule extends EventEmitter {
     this._timer = null;
 
     obs.on('volume-meters', (inputs) => this._onMeters(inputs));
+    obs.on('event', (e) => {
+      if (e.name === 'obs.stream_state') this._onStreamState(e.active).catch((err) => this.bot.log(`(clips) ${err.message}`));
+    });
     bot.on('client', (client) => this._attach(client));
     bot.on('stopped', () => this._setActive(false));
   }
@@ -79,6 +82,26 @@ export class ClipsModule extends EventEmitter {
 
   status() {
     return { enabled: this.enabled, active: this.active, last: this.lastScores, maxScore: this.maxScore, cooldown: this.cooldown, recent: this.recent.slice(-10) };
+  }
+
+  // Replay Buffer lancé avec le stream (module Clips actif) ; à l'arrêt du stream,
+  // enregistrement et Replay Buffer coupés si l'option est cochée.
+  async _onStreamState(active) {
+    if (active) {
+      if (!this.enabled) return;
+      if (!(await this.obs.replayBufferActive())) {
+        await this.obs.startReplayBuffer();
+        this.bot.log('(clips) Replay Buffer démarré avec le stream.');
+      }
+      return;
+    }
+    if (!this.cfg.stopWithStream) return;
+    // Un clip en cours de sauvegarde ne doit pas être coupé net.
+    for (let i = 0; this.busy && i < 10; i++) await new Promise((r) => setTimeout(r, 1000));
+    const stopped = [];
+    if (await this.obs.isRecording()) { await this.obs.stopRecord(); stopped.push('enregistrement'); }
+    if (await this.obs.replayBufferActive()) { await this.obs.stopReplayBuffer(); stopped.push('Replay Buffer'); }
+    if (stopped.length) this.bot.log(`(clips) stream arrêté : ${stopped.join(' et ')} coupé${stopped.length > 1 ? 's' : ''}.`);
   }
 
   _onMeters(inputs) {
@@ -234,7 +257,7 @@ export class ClipsModule extends EventEmitter {
       const ch = await client.channels.fetch(this.settings.get().discord.voiceChannelId);
       await ch.guild.commands.create({ name: 'clip', description: 'Enregistrer un clip des dernières secondes du stream' });
     } catch (err) {
-      this.bot.log(`(clips) commande /clip non enregistrée (${err.message}) — le bouton de l'app reste disponible.`);
+      this.bot.log(`(clips) commande /clip non enregistrée (${err.message}) — réinvite le bot avec le lien de la section Discord (droit « commandes »). Le bouton de l'app reste disponible.`);
     }
   }
 

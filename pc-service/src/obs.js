@@ -284,6 +284,14 @@ export class ObsController extends EventEmitter {
     await this._call('StartRecord');
   }
 
+  async stopRecord() {
+    await this._call('StopRecord');
+  }
+
+  async stopReplayBuffer() {
+    await this._call('StopReplayBuffer');
+  }
+
   async replayBufferActive() {
     const { outputActive } = await this._call('GetReplayBufferStatus');
     return outputActive;

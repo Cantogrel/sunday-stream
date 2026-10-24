@@ -193,3 +193,54 @@ test('watchdog : ferme à fin + 30 min sauf stream lancé en cours, jamais en mo
   const b3 = mk(late, { state: { forced: true } }); await b3._watchdog(); assert.equal(b3.stopped, undefined);
   const b4 = mk(new Date(2026, 9, 25, 23, 29)); await b4._watchdog(); assert.equal(b4.stopped, undefined);
 });
+
+// ---- Replay Buffer lié au stream, raccourci ----
+function streamSetup({ clipsOn = true, stopWithStream = false, rec = true, rb = false } = {}) {
+  const log = [];
+  const state = { rec, rb };
+  const obs = Object.assign(new EventEmitter(), {
+    connected: true,
+    replayBufferActive: async () => state.rb,
+    startReplayBuffer: async () => { state.rb = true; log.push('startRB'); },
+    stopReplayBuffer: async () => { state.rb = false; log.push('stopRB'); },
+    isRecording: async () => state.rec,
+    stopRecord: async () => { state.rec = false; log.push('stopRec'); },
+  });
+  const bot = new DiscordBot({ obs, settings: settingsWith(), confirm: {} });
+  const settings = { get: () => normalizeSettings({ modules: { discord: true, clips: clipsOn }, discord: { clipsChannelId: '44444' }, clips: { stopWithStream } }) };
+  return { clips: new ClipsModule({ obs, bot, settings }), log, state };
+}
+
+test('Clips actif : le Replay Buffer démarre avec le stream, sans doublon', async () => {
+  const { clips, log } = streamSetup();
+  await clips._onStreamState(true);
+  await clips._onStreamState(true);
+  assert.deepEqual(log, ['startRB']);
+});
+
+test('Clips désactivé : le stream ne touche pas au Replay Buffer', async () => {
+  const { clips, log } = streamSetup({ clipsOn: false });
+  await clips._onStreamState(true);
+  assert.deepEqual(log, []);
+});
+
+test('Arrêt du stream : rien n\'est coupé sans l\'option', async () => {
+  const { clips, log } = streamSetup({ rb: true });
+  await clips._onStreamState(false);
+  assert.deepEqual(log, []);
+});
+
+test('Arrêt du stream avec l\'option : enregistrement et Replay Buffer coupés', async () => {
+  const { clips, log, state } = streamSetup({ stopWithStream: true, rb: true });
+  await clips._onStreamState(false);
+  assert.deepEqual(log, ['stopRec', 'stopRB']);
+  assert.deepEqual(state, { rec: false, rb: false });
+});
+
+test('Réglages : raccourci valide gardé, invalide effacé, défaut Ctrl+Alt+C', () => {
+  assert.equal(normalizeSettings({}).clips.hotkey, 'Ctrl+Alt+C');
+  assert.equal(normalizeSettings({ clips: { hotkey: 'Ctrl+Shift+F9' } }).clips.hotkey, 'Ctrl+Shift+F9');
+  assert.equal(normalizeSettings({ clips: { hotkey: 'C' } }).clips.hotkey, '');
+  assert.equal(normalizeSettings({ clips: { hotkey: '' } }).clips.hotkey, '');
+  assert.equal(normalizeSettings({ clips: { hotkey: 'Ctrl+Alt+Del' } }).clips.hotkey, '');
+});

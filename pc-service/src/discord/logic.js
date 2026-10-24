@@ -177,6 +177,8 @@ export function decodeInvite(code) {
 }
 
 // ---- Réglages ----
+// Raccourci clavier global : modificateurs puis une touche (ex. « Ctrl+Alt+C », « Shift+F9 »). Vide = désactivé.
+export const HOTKEY_RE = /^(?:(?:Ctrl|Alt|Shift|Super)\+){1,3}(?:[A-Z0-9]|F(?:[1-9]|1\d|2[0-4]))$/;
 export const DEFAULT_SETTINGS = {
   modules: { couch: true, discord: false, clips: false },
   discord: {
@@ -189,7 +191,7 @@ export const DEFAULT_SETTINGS = {
     hourEnd: 23,
     startingScene: 'Démarrage',
   },
-  clips: { threshold: 0.65, cooldownSeconds: 90 },
+  clips: { threshold: 0.65, cooldownSeconds: 90, stopWithStream: false, hotkey: 'Ctrl+Alt+C' },
 };
 
 // 0 est une valeur valide (contrairement à l'ancien `or` Python).
@@ -217,6 +219,8 @@ export function normalizeSettings(raw = {}) {
     clips: {
       threshold: Number(c.threshold) > 0 && Number(c.threshold) <= 1 ? Number(c.threshold) : 0.65,
       cooldownSeconds: Number.isInteger(Number(c.cooldownSeconds)) && Number(c.cooldownSeconds) >= 0 ? Number(c.cooldownSeconds) : 90,
+      stopWithStream: Boolean(c.stopWithStream),
+      hotkey: HOTKEY_RE.test(String(c.hotkey ?? '').trim()) ? String(c.hotkey).trim() : '',
     },
   };
   for (const k of Object.keys(out.modules)) out.modules[k] = Boolean(out.modules[k]);
