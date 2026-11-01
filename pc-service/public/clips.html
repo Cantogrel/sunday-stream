@@ -16,6 +16,14 @@
   .bar { height: .5rem; background: #101014; border-radius: 4px; overflow: hidden; margin: .2rem 0 .6rem; }
   .bar > i { display: block; height: 100%; background: var(--accent); width: 0; transition: width .4s; }
   li { margin: .2rem 0; }
+  h2 { font-size: 1rem; margin: 0 0 .7rem; }
+  label { display: block; font-size: .85rem; color: var(--dim); margin: .6rem 0 .2rem; }
+  input[type=text], input[type=number] { width: 100%; box-sizing: border-box; background: #101014; color: var(--fg); border: 1px solid var(--border); border-radius: 8px; padding: .5rem .6rem; font: inherit; }
+  .check { display: flex; gap: .6rem; align-items: center; margin: .4rem 0; color: var(--fg); font-size: .95rem; }
+  .check input { width: auto; }
+  .row { display: flex; gap: .6rem; align-items: end; }
+  .row > input { flex: 1; }
+  button.sec { background: #24242b; border-color: var(--border); }
   #msg { min-height: 1.2rem; margin-top: .6rem; }
 </style>
 </head>
@@ -32,8 +40,24 @@
     <b>Détection automatique</b> <span class="dim">(niveaux sonores d'OBS pendant le stream)</span>
     <p class="dim">Score actuel <span id="sc">0</span> · max de la session <span id="mx">0</span></p>
     <div class="bar"><i id="bar"></i></div>
-    <p class="dim">Micro <span id="s_mic">0%</span> · Pic soudain <span id="s_sp">0%</span> · Audio du jeu <span id="s_in">0%</span></p>
-    <p class="dim">Le seuil et le module se règlent dans la section Discord.</p>
+    <p class="dim">Micro <span id="s_mic">0%</span> · Voix des amis <span id="s_sp">0%</span> · Activité de jeu <span id="s_in">0%</span></p>
+    <p class="dim">Le module Clips s'active dans Discord → Modules. La détection repère les exclamations, cris et rires (micro et voix des amis) ; l'activité manette / clavier / souris ne fait qu'amplifier ou tempérer le score. Elle s'apprend pendant les 3 premières minutes du stream.</p>
+  </section>
+  <section>
+    <h2>Réglages des clips</h2>
+    <label class="check"><input type="checkbox" id="c_auto"> Détection automatique des moments forts <span class="dim">(décochée : il ne reste que le bouton, le raccourci et /clip)</span></label>
+    <label class="check"><input type="checkbox" id="c_stop"> Quand le stream s'arrête, arrêter aussi l'enregistrement et le Replay Buffer</label>
+    <label class="check"><input type="checkbox" id="c_act"> Tenir compte de l'activité manette / clavier / souris <span class="dim">(compteurs seulement : jamais quelles touches, rien n'est enregistré)</span></label>
+    <label>Seuil de détection (0–1) <span class="dim">— plus haut = moins de clips</span></label>
+    <input type="number" id="thr" step="0.05" min="0.05" max="1">
+    <label>Dossier des clips <span class="dim">(vide = <span id="defFolder">Vidéos\Sunday Stream Clips</span>)</span></label>
+    <input type="text" id="c_folder" placeholder="Ex. D:\Stream\Clips">
+    <label>Où chercher la voix de tes amis <span class="dim">— laisse tout décoché : le son du PC (où passe Discord) est analysé automatiquement avec un filtre de voix. Coche des entrées pour restreindre.</span></label>
+    <div id="voiceList" class="dim">—</div>
+    <label>Raccourci clavier pour faire un clip <span class="dim">(global, actif même dans le jeu)</span></label>
+    <div class="row"><input type="text" id="hotkey" readonly placeholder="Clique ici puis appuie sur ta combinaison (ex. Ctrl+Alt+C)"><button class="sec" id="btnHkClear">Effacer</button></div>
+    <p class="dim">Il faut au moins une touche Ctrl, Alt, Maj ou Windows, plus une lettre, un chiffre ou une touche F1–F24. Pris en compte après « Enregistrer » (quelques secondes).</p>
+    <div style="margin-top:.8rem"><button id="btnSave">Enregistrer</button> <span id="saveMsg" class="dim"></span></div>
   </section>
   <section>
     <b>Derniers clips</b>
@@ -44,9 +68,35 @@
 <script>
 const $ = (id) => document.getElementById(id);
 const pct = (v) => Math.round(v * 100) + '%';
+let loaded = false;
+let voiceSel = new Set();
+let inputsKey = '';
+const say = (t, bad) => { $('saveMsg').textContent = t; $('saveMsg').style.color = bad ? 'var(--bad)' : 'var(--ok)'; };
+
+function fill(s) {
+  const c = s.settings.clips;
+  $('c_auto').checked = c.auto; $('c_stop').checked = c.stopWithStream; $('c_act').checked = c.useActivity;
+  $('thr').value = c.threshold; $('c_folder').value = c.folder; $('hotkey').value = c.hotkey;
+  voiceSel = new Set(c.voiceInputs);
+}
+
+async function loadInputs() {
+  const r = await (await fetch('/api/obs/inputs', { cache: 'no-store' })).json();
+  const names = r.ok ? r.inputs.map((i) => i.name) : [];
+  const key = names.join('|');
+  if (key === inputsKey) return;
+  inputsKey = key;
+  const checked = new Set([...document.querySelectorAll('#voiceList input:checked')].map((i) => i.value));
+  const want = checked.size ? checked : voiceSel;
+  $('voiceList').innerHTML = names.length ? names.map((n) => `<label class="check"><input type="checkbox" value="${n.replace(/"/g, '&quot;')}" ${want.has(n) ? 'checked' : ''}> ${n.replace(/</g, '&lt;')}</label>`).join('') : 'OBS non connecté.';
+}
+
 async function refresh() {
   const s = await (await fetch('/api/discord', { cache: 'no-store' })).json();
   const c = s.clips;
+  if (!loaded) { fill(s); loaded = true; }
+  $('defFolder').textContent = c.defaultFolder;
+  loadInputs().catch(() => {});
   $('state').textContent = !s.settings.modules.clips ? "Module Clips désactivé (section Discord → Modules)."
     : !s.settings.discord.clipsChannelId ? "Renseigne l'ID du salon des clips (section Discord)."
     : !s.bot.ready ? "Le bot Discord n'est pas connecté : les clips ne peuvent pas être publiés."
@@ -56,6 +106,22 @@ async function refresh() {
   $('s_mic').textContent = pct(c.last.mic); $('s_sp').textContent = pct(c.last.speech); $('s_in').textContent = pct(c.last.input);
   $('recent').innerHTML = c.recent.slice().reverse().map((r) => `<li>${new Date(r.at).toLocaleTimeString('fr-FR')} · ${r.source} · ${r.file}</li>`).join('') || '<li>Aucun pour l\'instant.</li>';
 }
+$('btnSave').onclick = async () => {
+  const clips = { auto: $('c_auto').checked, stopWithStream: $('c_stop').checked, useActivity: $('c_act').checked, threshold: Number($('thr').value), folder: $('c_folder').value.trim(), hotkey: $('hotkey').value, voiceInputs: [...document.querySelectorAll('#voiceList input:checked')].map((i) => i.value) };
+  const r = await fetch('/api/discord/settings', { method: 'POST', body: JSON.stringify({ clips }) }).then((x) => x.json()).catch(() => ({ ok: false, error: 'Service injoignable.' }));
+  if (r.ok) { loaded = false; say('Enregistré.'); await refresh(); } else say(r.error || 'Échec.', true);
+};
+$('hotkey').addEventListener('keydown', (e) => {
+  e.preventDefault();
+  if (['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) return;
+  const mods = [e.ctrlKey && 'Ctrl', e.altKey && 'Alt', e.shiftKey && 'Shift', e.metaKey && 'Super'].filter(Boolean);
+  const m = /^(?:Key([A-Z])|Digit(\d)|(F\d{1,2}))$/.exec(e.code);
+  const key = m && (m[1] || m[2] || m[3]);
+  if (!mods.length || !key) { say('Combinaison invalide : au moins Ctrl/Alt/Maj/Windows + une lettre, un chiffre ou une touche F.', true); return; }
+  $('hotkey').value = [...mods, key].join('+');
+  say('Raccourci choisi : ' + $('hotkey').value + ' — clique sur « Enregistrer ».');
+});
+$('btnHkClear').onclick = () => { $('hotkey').value = ''; say('Raccourci effacé — clique sur « Enregistrer ».'); };
 $('btn').onclick = async () => {
   $('btn').disabled = true; $('msg').textContent = 'Sauvegarde du clip…'; $('msg').style.color = 'var(--dim)';
   const r = await fetch('/api/clips/trigger', { method: 'POST', body: '{}' }).then((x) => x.json()).catch(() => ({ ok: false, error: 'Service injoignable.' }));

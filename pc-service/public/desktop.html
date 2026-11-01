@@ -157,6 +157,18 @@
         <div><b id="hCong">–</b><small>congestion</small></div>
       </div>
     </div>
+
+    <div class="card">
+      <div class="card-title">Micro de stream</div>
+      <p style="margin:0 0 .6rem;color:var(--dim);font-size:.85rem;line-height:1.4">Choisis ton micro dans OBS : il est mémorisé, vérifié toutes les 15 s et remis en place tout seul si OBS l'a changé (mise à jour, autre périphérique, pistes audio). Tu es prévenu si le micro reste muet pendant le direct. Jamais de démutage automatique.</p>
+      <label style="display:flex;gap:.5rem;align-items:center;font-size:.9rem;margin-bottom:.6rem"><input type="checkbox" id="micOn"> Surveiller et réparer automatiquement mon micro</label>
+      <div style="display:flex;gap:.5rem;align-items:center">
+        <select id="micSel" style="flex:1;background:#101014;color:var(--fg);border:1px solid var(--border);border-radius:8px;padding:.45rem .6rem"><option value="">— OBS non connecté —</option></select>
+        <button class="btn" id="btnMicSave" type="button">Mémoriser ce micro</button>
+        <button class="btn" id="btnMicForget" type="button">Oublier</button>
+      </div>
+      <p id="micState" style="min-height:1.2rem;margin:.6rem 0 0;font-size:.85rem;color:var(--dim)"></p>
+    </div>
   </div>
 
   <div class="col">
@@ -196,5 +208,6 @@
 
 <div id="toast" class="hidden"></div>
 <script src="desktop.js"></script>
+<script src="mic.js"></script>
 </body>
 </html>

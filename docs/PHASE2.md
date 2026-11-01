@@ -36,6 +36,11 @@ Le message de clip garde sa forme (`Micro / Voix / Inputs`), alimentée ainsi :
 - **Inputs** : activité manette / clavier / souris (`activity.js`, PowerShell persistant : compteurs par seconde,
   jamais les touches). Elle module le score de ±15 % mais ne déclenche jamais seule.
 - Le son du jeu n'est plus pris en compte (toujours fort, c'était la cause des « Inputs à 100 % »).
+- **Calibration** : le niveau habituel des voix s'apprend pendant les 3 premières minutes du direct (médiane de 20 s de
+  parole, seulement ce qui dépasse −45 dB, et pour les amis seulement ce que le filtre juge être de la voix) ; aucun
+  clip automatique avant. Case « Détection automatique » pour couper la détection sans toucher au Replay Buffer ;
+  un Replay Buffer arrêté dans OBS n'est jamais relancé par un clip automatique. Chaque déclenchement est journalisé
+  (quel détecteur, quel type d'émotion, score) pour régler les seuils.
 - Score = max(micro, voix × 0,9) × (0,85 + 0,3 × activité) ; un seul tick suffit ; seuil et cooldown inchangés.
 - Limites : sans hauteur de voix ni mots, on détecte la *dynamique* des émotions, pas leur nature ; les seuils
   (dB, durées) sont à ajuster sur de vrais streams. Une manette hors XInput (ex. via Steam Input) peut ne pas compter.

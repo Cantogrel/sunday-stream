@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 process.env.SUNDAY_DATA_DIR = mkdtempSync(join(tmpdir(), 'ss-data-'));
-const { parseDuration, parseStreams, videoBitrate, FfmpegTool } = await import('../src/ffmpeg.js');
+const { parseDuration, parseStreams, videoBitrate, FfmpegTool, run } = await import('../src/ffmpeg.js');
 
 const MB = 1024 * 1024;
 
@@ -43,4 +43,29 @@ test('ensure : déjà installé -> pas de téléchargement', async () => {
   writeFileSync(join(dir, 'ffmpeg.exe'), '');
   const tool = new FfmpegTool({ dir });
   assert.equal(await tool.ensure(), join(dir, 'ffmpeg.exe'));
+});
+
+test('prepare : durée lue dans le stderr de `ffmpeg -i` (qui échoue toujours sans sortie) -> réencodage, pas « trop long »', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ss-prep-'));
+  const input = join(dir, 'clip.mp4');
+  writeFileSync(input, Buffer.alloc(11 * MB));
+  const calls = [];
+  const runner = async (exe, args) => {
+    calls.push(args);
+    if (args.includes('-b:v')) { writeFileSync(args.at(-1), Buffer.alloc(5 * MB)); return { err: '' }; }
+    throw Object.assign(new Error('At least one output file must be specified'), {
+      stderr: ['Duration: 00:01:00.00', '  Stream #0:0: Video: h264, 1920x1080', '  Stream #0:1: Audio: aac', 'At least one output file must be specified'].join(' | '),
+    });
+  };
+  const tool = new FfmpegTool({ dir, runner });
+  tool.ensure = async () => 'ffmpeg';
+  const out = await tool.prepare(input, 10 * MB);
+  assert.ok(out, 'un fichier compressé doit être produit');
+  assert.ok(calls.some((a) => a.includes('libx264')));
+  out.cleanup();
+});
+
+test('run : un processus qui échoue transmet son stderr complet (ffmpeg -i y écrit la durée)', async () => {
+  const err = await run(process.execPath, ['-e', "console.error('Duration: 00:00:59.12'); console.error('x'); console.error('y'); console.error('z'); process.exit(1)"], 10_000).catch((e) => e);
+  assert.match(err.stderr, /Duration: 00:00:59\.12/);
 });

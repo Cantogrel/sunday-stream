@@ -191,7 +191,7 @@ export const DEFAULT_SETTINGS = {
     hourEnd: 23,
     startingScene: 'Démarrage',
   },
-  clips: { threshold: 0.65, cooldownSeconds: 90, stopWithStream: false, hotkey: 'Ctrl+Alt+C', folder: '', voiceInputs: [], useActivity: true },
+  clips: { threshold: 0.65, cooldownSeconds: 90, stopWithStream: false, hotkey: 'Ctrl+Alt+C', folder: '', voiceInputs: [], useActivity: true, auto: true },
   // Micro de référence du stream : mémorisé une fois, vérifié et remis en place tout seul (micGuard.js).
   stream: { micInput: '', micDeviceId: '', micTracks: null, micGuard: true },
 };
@@ -228,6 +228,7 @@ export function normalizeSettings(raw = {}) {
       // Entrées OBS portant la voix des amis (ex. la capture de Discord) ; vide = aucune analyse.
       voiceInputs: Array.isArray(c.voiceInputs) ? c.voiceInputs.map((n) => String(n).trim()).filter(Boolean).slice(0, 8) : [],
       useActivity: c.useActivity !== false,
+      auto: c.auto !== false,
     },
     stream: {
       micInput: String(st.micInput ?? '').trim(),

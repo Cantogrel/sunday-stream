@@ -173,12 +173,41 @@ test('détection : voix normale ne déclenche rien, cri soudain déclenche une f
     }
     await clips._tick();
   };
-  for (let i = 0; i < 30; i++) await second(0.03);
+  for (let i = 0; i < 200; i++) await second(0.03); // 3 min de calibration puis voix habituelle
   assert.equal(triggers.length, 0);
   for (let i = 0; i < 3; i++) await second(0.6);
   assert.deepEqual(triggers, ['auto']);
   for (let i = 0; i < 3; i++) await second(0.6);
   assert.equal(triggers.length, 1); // cooldown 90 s
+});
+
+test('détection : aucun clip automatique pendant la calibration ni si la détection est coupée', async () => {
+  for (const [auto, warm] of [[true, 60], [false, 200]]) {
+    const { obs, clips } = setup();
+    clips.settings.get = () => normalizeSettings({ modules: { discord: true, clips: true }, discord: { userId: '11111', voiceChannelId: '22222', clipsChannelId: '44444' }, clips: { auto } });
+    let n = 0;
+    clips.trigger = async () => { n++; return { ok: true }; };
+    let t = 1_000_000;
+    clips.clock = () => t;
+    const second = async (mul) => {
+      for (let k = 0; k < 20; k++) { t += 50; obs.emit('volume-meters', [{ inputName: 'Micro', inputLevelsMul: [[0, mul * (k % 2 ? 1.2 : 0.85), 0]] }]); }
+      await clips._tick();
+    };
+    for (let i = 0; i < warm; i++) await second(0.03);
+    for (let i = 0; i < 3; i++) await second(0.6);
+    assert.equal(n, 0, `auto=${auto}`);
+  }
+});
+
+test('trigger automatique : un Replay Buffer arrêté exprès n’est pas relancé', async () => {
+  const { clips, obs } = setup();
+  let started = 0;
+  obs.replayBufferActive = async () => false;
+  obs.startReplayBuffer = async () => { started++; };
+  assert.equal((await clips.trigger({ source: 'auto' })).ok, false);
+  assert.equal(started, 0);
+  await clips.trigger({ source: 'bouton' });
+  assert.equal(started, 1);
 });
 
 test('détection : le son du jeu seul, même très fort, ne déclenche jamais', async () => {

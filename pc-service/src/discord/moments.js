@@ -13,7 +13,7 @@ const clamp01 = (x) => Math.min(1, Math.max(0, x));
 const mean = (a) => (a.length ? a.reduce((s, v) => s + v, 0) / a.length : 0);
 
 export class EmotionDetector {
-  constructor({ floorDb = -55, warmupMs = 20_000, tauMs = 90_000 } = {}) {
+  constructor({ floorDb = -45, warmupMs = 20_000, tauMs = 90_000 } = {}) {
     this.floorDb = floorDb;
     this.warmupMs = warmupMs;
     this.tauMs = tauMs;
@@ -22,23 +22,35 @@ export class EmotionDetector {
 
   reset() {
     this.buf = []; // { t, db }
-    this.baseline = null; // niveau habituel de la voix (dB)
+    this.baseline = null; // niveau habituel de la voix (dB), connu après la période d'apprentissage
+    this.learning = []; // niveaux de parole vus pendant l'apprentissage
     this.voicedMs = 0;
     this.last = null;
   }
 
   // Un relevé du niveau (dB, déjà le maximum des canaux) à l'instant t (ms).
-  push(t, db) {
+  // `learn` : ce relevé est de la parole et peut servir à établir le niveau habituel (par défaut :
+  // tout ce qui dépasse le plancher de bruit) ; sinon il est seulement mémorisé pour l'analyse.
+  push(t, db, learn = db > this.floorDb) {
     const dt = this.last === null ? 0 : Math.max(0, Math.min(t - this.last, 1000));
     this.last = t;
     this.buf.push({ t, db });
     while (this.buf.length && this.buf[0].t < t - 4000) this.buf.shift();
-    if (db > this.floorDb) {
-      this.voicedMs += dt;
-      // La référence ne suit pas les pics : un cri ne doit pas relever « le niveau normal » d'un coup.
-      const target = this.baseline === null ? db : Math.min(db, this.baseline + 6);
-      this.baseline = this.baseline === null ? db : this.baseline + (target - this.baseline) * Math.min(1, dt / this.tauMs);
+    if (!learn || db <= this.floorDb) return;
+    this.voicedMs += dt;
+    if (this.baseline === null) {
+      // Apprentissage : la médiane de la parole entendue est plus fiable qu'un premier échantillon.
+      this.learning.push(db);
+      if (this.voicedMs >= this.warmupMs) {
+        const sorted = [...this.learning].sort((a, b) => a - b);
+        this.baseline = sorted[Math.floor(sorted.length / 2)];
+        this.learning = [];
+      }
+      return;
     }
+    // La référence ne suit pas les pics : un cri ne doit pas relever « le niveau normal » d'un coup.
+    const target = Math.min(db, this.baseline + 6);
+    this.baseline += (target - this.baseline) * Math.min(1, dt / this.tauMs);
   }
 
   get warm() {

@@ -15,10 +15,10 @@ export const FFMPEG_DIR = join(DATA_DIR, 'ffmpeg');
 const AUDIO_BPS = 96_000;
 const MIN_VIDEO_BPS = 150_000;
 
-const run = (file, args, timeout) =>
+export const run = (file, args, timeout) =>
   new Promise((resolve, reject) =>
     execFile(file, args, { windowsHide: true, timeout, maxBuffer: 16 * 1024 * 1024 }, (err, out, errOut) =>
-      err ? reject(new Error(errOut?.trim().split('\n').slice(-3).join(' ') || err.message)) : resolve({ out, err: errOut })));
+      err ? reject(Object.assign(new Error(errOut?.trim().split('\n').slice(-3).join(' ') || err.message), { stderr: errOut || '' })) : resolve({ out, err: errOut })));
 
 const sha256 = (path) =>
   new Promise((resolve, reject) => {
@@ -48,7 +48,8 @@ export function videoBitrate(durationSec, limitBytes) {
 }
 
 export class FfmpegTool {
-  constructor({ dir = FFMPEG_DIR, log = () => {} } = {}) {
+  constructor({ dir = FFMPEG_DIR, log = () => {}, runner = run } = {}) {
+    this.run = runner;
     this.dir = dir;
     this.log = log;
     this.state = { step: 'idle', message: '' }; // idle | downloading | verifying | extracting | done | error
@@ -122,7 +123,8 @@ export class FfmpegTool {
     } catch {
       return null;
     }
-    const probe = await run(exe, ['-hide_banner', '-i', input], 30_000).catch((e) => ({ err: e.message }));
+    // `ffmpeg -i` sans sortie se termine toujours en erreur : les infos du clip sont dans son stderr complet.
+    const probe = await this.run(exe, ['-hide_banner', '-i', input], 30_000).catch((e) => ({ err: e.stderr || e.message }));
     const info = parseStreams(probe.err);
     const isMp4 = extname(input).toLowerCase() === '.mp4';
     const video = info.video === 'h264';
@@ -135,7 +137,7 @@ export class FfmpegTool {
     try {
       // 1) simple changement de conteneur (sans perte, quasi instantané) si le contenu est déjà compatible
       if (video && size < limitBytes) {
-        await run(exe, ['-y', '-hide_banner', '-i', input, '-c:v', 'copy', ...audio, '-movflags', '+faststart', path], 5 * 60_000);
+        await this.run(exe, ['-y', '-hide_banner', '-i', input, '-c:v', 'copy', ...audio, '-movflags', '+faststart', path], 5 * 60_000);
         if (statSync(path).size < limitBytes) {
           this.log(`(ffmpeg) clip converti en MP4 (${(statSync(path).size / 1048576).toFixed(1)} Mo).`);
           return { path, cleanup };
@@ -151,7 +153,7 @@ export class FfmpegTool {
       }
       const rate = bps ? ['-b:v', String(bps), '-maxrate', String(Math.floor(bps * 1.2)), '-bufsize', String(bps * 2)] : ['-crf', '23'];
       const scale = bps && bps < 1_200_000 ? ['-vf', "scale=-2:'min(720,ih)'"] : [];
-      await run(exe, ['-y', '-hide_banner', '-i', input, ...scale, '-c:v', 'libx264', '-preset', 'veryfast', ...rate, '-c:a', 'aac', '-b:a', String(AUDIO_BPS), '-movflags', '+faststart', path], 10 * 60_000);
+      await this.run(exe, ['-y', '-hide_banner', '-i', input, ...scale, '-c:v', 'libx264', '-preset', 'veryfast', ...rate, '-c:a', 'aac', '-b:a', String(AUDIO_BPS), '-movflags', '+faststart', path], 10 * 60_000);
       if (statSync(path).size >= limitBytes) throw new Error('sortie encore trop volumineuse');
       this.log(`(ffmpeg) clip réencodé : ${(statSync(path).size / 1048576).toFixed(1)} Mo.`);
       return { path, cleanup };

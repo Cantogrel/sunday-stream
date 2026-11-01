@@ -10,6 +10,7 @@ import { CLIP_STATUS, clipDescription, clipFooter, computeClipStatus, parseClipF
 
 export const CLIPS_DIR = join(DATA_DIR, 'clips');
 export const DEFAULT_CLIPS_FOLDER = join(homedir(), 'Videos', 'Sunday Stream Clips');
+const CALIBRATION_MS = 3 * 60_000;
 const MIC_RE = /mic|micro|aux|voix|voice/i;
 const OK_EMOJI = '✅';
 const KO_EMOJI = '❌';
@@ -75,6 +76,7 @@ export class ClipsModule extends EventEmitter {
     this.gate = new VoiceGate(); // filtre de voix appliqué au son du PC
     this.desktopNames = new Set();
     this._desktopAt = 0;
+    this.activeSince = 0;
     this.norm = { input: new Normalizer() };
     this.cooldown = 0;
     this.active = false;
@@ -140,8 +142,9 @@ export class ClipsModule extends EventEmitter {
     }
     if (mic !== null) this.emotion.mic.push(t, dbOf(mic));
     if (voice !== null) {
-      this.emotion.voice.push(t, dbOf(voice));
+      // Le niveau habituel de la voix des amis ne s'apprend que sur ce qui ressemble à de la parole.
       this.gate.push(t, dbOf(voice));
+      this.emotion.voice.push(t, dbOf(voice), this.gate.likeness(t) > 0.5);
     }
   }
 
@@ -161,6 +164,10 @@ export class ClipsModule extends EventEmitter {
     this.active = on;
     if (on) {
       this.norm.input.reset();
+      this.emotion.mic.reset();
+      this.emotion.voice.reset();
+      this.gate.reset();
+      this.activeSince = this.clock();
       this.cooldown = 0;
       this.activity?.start();
       this.maxScore = 0;
@@ -177,9 +184,11 @@ export class ClipsModule extends EventEmitter {
     if (!live) return;
     const t = this.clock();
     if (this.obs.listAudioInputs && t - this._desktopAt > 60_000) await this._refreshDesktop();
-    const mic = this.emotion.mic.score(t).value;
+    const micScore = this.emotion.mic.score(t);
+    const voiceScore = this.emotion.voice.score(t);
+    const mic = micScore.value;
     // Le son du PC mélange jeu et amis : ce qui ressemble à de la voix compte à plein, le reste très peu.
-    const speech = this.emotion.voice.score(t).value * (0.15 + 0.85 * this.gate.likeness(t));
+    const speech = voiceScore.value * (0.15 + 0.85 * this.gate.likeness(t));
     const sample = this.cfg.useActivity ? this.activity?.latest : null;
     const input = sample ? this.norm.input.push(activityLevel(sample)) : 0;
     // Les émotions (micro, ou voix des amis un peu moins sûre) font le score ; l'activité de jeu
@@ -191,8 +200,14 @@ export class ClipsModule extends EventEmitter {
       this.cooldown -= 1;
       return;
     }
+    // Calibration : le niveau habituel des voix s'apprend pendant les premières minutes du direct,
+    // aucun clip automatique avant (sinon l'arrivée des amis en vocal passe pour une exclamation).
+    if (!this.cfg.auto || t - this.activeSince < CALIBRATION_MS) return;
     if (score > this.cfg.threshold) {
       this.cooldown = this.cfg.cooldownSeconds;
+      const why = [['micro', micScore], ['voix des amis', voiceScore]].filter(([, x]) => x.value > 0.3)
+        .map(([n, x]) => `${n} : ${x.laugh >= x.scream && x.laugh >= x.exclaim ? 'rire' : x.scream >= x.exclaim ? 'cri' : 'exclamation'} ${x.value.toFixed(2)}`).join(', ');
+      this.bot.log(`(clips) déclencheur automatique — ${why || 'score composite'} · voix ${this.gate.likeness(t).toFixed(2)} · activité ${input.toFixed(2)}`);
       await this.trigger({ source: 'auto', scores: this.lastScores });
     }
   }
@@ -207,6 +222,8 @@ export class ClipsModule extends EventEmitter {
     this.busy = true;
     try {
       if (!(await this.obs.replayBufferActive())) {
+        // Un Replay Buffer arrêté exprès dans OBS n'est jamais relancé par une détection automatique.
+        if (source === 'auto') return { ok: false, error: 'Replay Buffer arrêté : clip automatique ignoré.' };
         await this.obs.startReplayBuffer().catch(() => {
           throw new Error("Replay Buffer inactif : active-le une fois dans OBS (Réglages → Sortie → Enregistrement).");
         });
