@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { EmbedBuilder } from 'discord.js';
@@ -56,6 +56,31 @@ test('publication : envoi sans pied, puis édition du pied, puis ✅ ❌', async
 
 test('fichier trop gros : pas de pièce jointe, champ avec le chemin local', async () => {
   const { clips, calls } = setup();
+  const big = join(mkdtempSync(join(tmpdir(), 'ss-')), 'big.mp4');
+  writeFileSync(big, Buffer.alloc(11 * 1024 * 1024));
+  await clips.publish(big, { score: 0.7, mic: 0, speech: 0, input: 0 });
+  assert.equal(calls[0][2], false);
+  assert.equal(calls[0][1].fields[0].name, 'Fichier trop volumineux pour Discord');
+});
+
+test('fichier trop gros + ffmpeg : le clip compressé est joint, puis nettoyé', async () => {
+  const { clips, calls } = setup();
+  const dir = mkdtempSync(join(tmpdir(), 'ss-'));
+  const small = join(dir, 'small.mp4');
+  writeFileSync(small, 'x'.repeat(100));
+  let cleaned = false;
+  clips.ffmpeg = { prepare: async () => ({ path: small, cleanup: () => { cleaned = true; } }) };
+  const big = join(dir, 'big.mkv');
+  writeFileSync(big, Buffer.alloc(11 * 1024 * 1024));
+  await clips.publish(big, { score: 0.7, mic: 0, speech: 0, input: 0 });
+  assert.equal(calls[0][2], true);
+  assert.equal(calls[0][1].fields, undefined);
+  assert.equal(cleaned, true);
+});
+
+test('fichier trop gros + compression impossible : repli sur le chemin local', async () => {
+  const { clips, calls } = setup();
+  clips.ffmpeg = { prepare: async () => null };
   const big = join(mkdtempSync(join(tmpdir(), 'ss-')), 'big.mp4');
   writeFileSync(big, Buffer.alloc(11 * 1024 * 1024));
   await clips.publish(big, { score: 0.7, mic: 0, speech: 0, input: 0 });
@@ -131,20 +156,57 @@ test('Normalizer : premier échantillon 0, pic au-dessus du bruit de fond proche
   assert.ok(n.push(0.1) < 0.1);
 });
 
-test('détection : bruit constant ne déclenche rien, pics soutenus déclenchent une fois puis cooldown', async () => {
+test('détection : voix normale ne déclenche rien, cri soudain déclenche une fois puis cooldown', async () => {
   const { obs, clips } = setup();
   const triggers = [];
   clips.trigger = async (o) => { triggers.push(o.source); return { ok: true }; };
-  const meter = (mic, game) => obs.emit('volume-meters', [
-    { inputName: 'Micro', inputLevelsMul: [[0, mic, 0]] },
-    { inputName: 'Desktop', inputLevelsMul: [[0, game, 0]] },
-  ]);
-  for (let i = 0; i < 30; i++) { meter(0.1, 0.1); await clips._tick(); }
+  let t = 1_000_000;
+  clips.clock = () => t;
+  // 1 s de mesures (20 × 50 ms) au niveau donné, puis un tick de détection.
+  const second = async (mul, game = 0.9) => {
+    for (let k = 0; k < 20; k++) {
+      t += 50;
+      obs.emit('volume-meters', [
+        { inputName: 'Micro', inputLevelsMul: [[0, mul * (k % 2 ? 1.2 : 0.85), 0]] },
+        { inputName: 'Desktop', inputLevelsMul: [[0, game, 0]] }, // le son du jeu, toujours fort, ne compte plus
+      ]);
+    }
+    await clips._tick();
+  };
+  for (let i = 0; i < 30; i++) await second(0.03);
   assert.equal(triggers.length, 0);
-  for (let i = 0; i < 6; i++) { meter(1, 1); await clips._tick(); }
+  for (let i = 0; i < 3; i++) await second(0.6);
   assert.deepEqual(triggers, ['auto']);
-  for (let i = 0; i < 6; i++) { meter(1, 1); await clips._tick(); }
+  for (let i = 0; i < 3; i++) await second(0.6);
   assert.equal(triggers.length, 1); // cooldown 90 s
+});
+
+test('détection : le son du jeu seul, même très fort, ne déclenche jamais', async () => {
+  const { obs, clips } = setup();
+  let n = 0;
+  clips.trigger = async () => { n++; return { ok: true }; };
+  let t = 1_000_000;
+  clips.clock = () => t;
+  for (let i = 0; i < 60; i++) {
+    for (let k = 0; k < 20; k++) { t += 50; obs.emit('volume-meters', [{ inputName: 'Desktop', inputLevelsMul: [[0, i > 30 ? 1 : 0.2, 0]] }]); }
+    await clips._tick();
+  }
+  assert.equal(n, 0);
+});
+
+test('stockage : le clip est déplacé dans le dossier dédié, sans écraser un fichier existant', () => {
+  const { clips } = setup();
+  const src = mkdtempSync(join(tmpdir(), 'ss-src-'));
+  const dst = join(mkdtempSync(join(tmpdir(), 'ss-dst-')), 'Clips');
+  Object.defineProperty(clips, 'folder', { get: () => dst });
+  const f1 = join(src, 'clip.mkv');
+  writeFileSync(f1, 'a');
+  const p1 = clips.store(f1);
+  assert.equal(p1, join(dst, 'clip.mkv'));
+  assert.equal(existsSync(f1), false);
+  const f2 = join(src, 'clip.mkv');
+  writeFileSync(f2, 'b');
+  assert.equal(clips.store(f2), join(dst, 'clip (2).mkv'));
 });
 
 test('détection inactive quand OBS ne diffuse pas', async () => {

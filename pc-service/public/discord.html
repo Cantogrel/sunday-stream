@@ -45,7 +45,7 @@
     <h2>État</h2>
     <div><span class="dot" id="stDot"></span><span id="stText">…</span></div>
     <div class="actions">
-      <button id="btnStart">Connecter maintenant (test)</button>
+      <button id="btnStart">Lancer le bot maintenant</button>
       <button id="btnStop">Déconnecter</button>
     </div>
     <p class="dim" id="inviteLine" style="display:none">Pour que la commande <b>/clip</b> existe sur Discord, invite (ou réinvite) le bot avec ce lien : <a id="inviteUrl" target="_blank" rel="noopener" style="color:var(--accent)">lien d'invitation</a></p>
@@ -82,7 +82,7 @@
       <div><label>Scène OBS de démarrage</label><input id="scene"></div>
       <div><label>Seuil de détection des clips (0–1)</label><input id="thr" type="number" step="0.05" min="0.05" max="1"></div>
     </div>
-    <p class="dim">Le bot se connecte tout seul 30 min avant la plage et se ferme 30 min après la fin (sauf stream en cours). Plus aucune tâche planifiée Windows.</p>
+    <p class="dim">Le bot se connecte tout seul 30 min avant la plage et se ferme 30 min après la fin (sauf stream en cours). « Lancer le bot maintenant » sert à streamer en dehors de cette plage : il reste alors connecté, sans arrêt automatique, jusqu'à « Déconnecter ». Plus aucune tâche planifiée Windows.</p>
     <div id="msg"></div>
     <div class="actions">
       <button class="primary" id="btnSave">Enregistrer</button>
@@ -92,9 +92,22 @@
   </section>
 
   <section>
+    <h2>Micro de stream</h2>
+    <p class="dim">Choisis ton micro dans OBS : Sunday Stream le mémorise, vérifie toutes les 15 s qu'il n'a pas bougé (mise à jour d'OBS, autre périphérique, pistes audio) et le remet en place tout seul. Il te prévient aussi si le micro reste muet pendant le direct. Il ne démute jamais.</p>
+    <label class="check"><input type="checkbox" id="micOn"> Surveiller et réparer automatiquement mon micro</label>
+    <div class="row"><div><select id="micSel"><option value="">— OBS non connecté —</option></select></div><button id="btnMicSave">Mémoriser ce micro</button><button id="btnMicForget">Oublier</button></div>
+    <p id="micState" class="dim" style="min-height:1.2rem"></p>
+  </section>
+
+  <section>
     <h2>Clips</h2>
     <p class="dim">Quand le module Clips est coché, le Replay Buffer d'OBS démarre tout seul avec le stream (à activer une fois dans OBS : Réglages → Sortie → Enregistrement).</p>
     <label class="check"><input type="checkbox" id="c_stop"> Quand le stream s'arrête, arrêter aussi l'enregistrement et le Replay Buffer</label>
+    <label>Dossier des clips <span class="dim">(vide = <span id="defFolder">Vidéos\Sunday Stream Clips</span>)</span></label>
+    <input id="c_folder" placeholder="Ex. D:\Stream\Clips">
+    <label>Où chercher la voix de tes amis <span class="dim">— laisse tout décoché : le son du PC (où passe Discord) est analysé automatiquement avec un filtre de voix. Coche des entrées pour restreindre.</span></label>
+    <div id="voiceList" class="dim">—</div>
+    <label class="check"><input type="checkbox" id="c_act"> Tenir compte de l'activité manette / clavier / souris <span class="dim">(compteurs seulement : jamais quelles touches, rien n'est enregistré)</span></label>
     <label>Raccourci clavier pour faire un clip <span class="dim">(global, actif même dans le jeu)</span></label>
     <div class="row"><input id="hotkey" readonly placeholder="Clique ici puis appuie sur ta combinaison (ex. Ctrl+Alt+C)"><button id="btnHkClear">Effacer</button></div>
     <p class="dim">Il faut au moins une touche Ctrl, Alt, Maj ou Windows, plus une lettre, un chiffre ou une touche F1–F24. Pris en compte après « Enregistrer » (quelques secondes). Sur Discord, la commande <b>/clip</b> fait la même chose.</p>
@@ -116,6 +129,7 @@ const $ = (id) => document.getElementById(id);
 const post = (p, b = {}) => fetch(p, { method: 'POST', body: JSON.stringify(b) }).then((r) => r.json());
 const say = (t, bad) => { $('msg').textContent = t; $('msg').style.color = bad ? 'var(--bad)' : 'var(--ok)'; };
 let loaded = false;
+let voiceSel = new Set();
 
 function fill(s) {
   const d = s.settings.discord;
@@ -125,6 +139,9 @@ function fill(s) {
   $('voice').value = d.voiceChannelId; $('log_ch').value = d.logChannelId; $('clips_ch').value = d.clipsChannelId;
   $('uid').value = d.userId; $('day').value = d.activeDay; $('h0').value = d.hourStart; $('h1').value = d.hourEnd;
   $('scene').value = d.startingScene; $('thr').value = s.settings.clips.threshold;
+  $('c_folder').value = s.settings.clips.folder; $('c_act').checked = s.settings.clips.useActivity;
+  $('micOn').checked = s.settings.stream.micGuard;
+  voiceSel = new Set(s.settings.clips.voiceInputs);
   $('c_stop').checked = s.settings.clips.stopWithStream; $('hotkey').value = s.settings.clips.hotkey;
   $('tokState').textContent = s.hasToken ? '— enregistré (chiffré)' : '— non renseigné';
 }
@@ -132,10 +149,23 @@ function fill(s) {
 function collect() {
   return {
     token: $('token').value,
+    micGuard: $('micOn').checked,
     modules: { couch: $('m_couch').checked, discord: $('m_discord').checked, clips: $('m_clips').checked },
     discord: { voiceChannelId: $('voice').value.trim(), logChannelId: $('log_ch').value.trim(), clipsChannelId: $('clips_ch').value.trim(), userId: $('uid').value.trim(), activeDay: $('day').value, hourStart: Number($('h0').value), hourEnd: Number($('h1').value), startingScene: $('scene').value.trim() },
-    clips: { threshold: Number($('thr').value), stopWithStream: $('c_stop').checked, hotkey: $('hotkey').value },
+    clips: { threshold: Number($('thr').value), stopWithStream: $('c_stop').checked, hotkey: $('hotkey').value, folder: $('c_folder').value.trim(), useActivity: $('c_act').checked, voiceInputs: [...document.querySelectorAll('#voiceList input:checked')].map((i) => i.value) },
   };
+}
+
+let inputsKey = '';
+async function loadInputs(s) {
+  const r = await (await fetch('/api/obs/inputs', { cache: 'no-store' })).json();
+  const names = r.ok ? r.inputs.map((i) => i.name) : [];
+  const key = names.join('|') + '#' + s.settings.stream.micInput;
+  if (key === inputsKey) return;
+  inputsKey = key;
+  $('micSel').innerHTML = names.length ? names.map((n) => `<option>${n.replace(/</g, '&lt;')}</option>`).join('') : '<option value="">— OBS non connecté —</option>';
+  if (s.settings.stream.micInput) $('micSel').value = s.settings.stream.micInput;
+  $('voiceList').innerHTML = names.length ? names.map((n) => `<label class="check"><input type="checkbox" value="${n.replace(/"/g, '&quot;')}" ${voiceSel.has(n) ? 'checked' : ''}> ${n.replace(/</g, '&lt;')}</label>`).join('') : 'OBS non connecté.';
 }
 
 async function refresh() {
@@ -146,11 +176,16 @@ async function refresh() {
   if (b.inviteUrl) $('inviteUrl').href = b.inviteUrl;
   $('stDot').className = 'dot ' + (b.ready ? 'ok' : (b.running ? '' : 'bad'));
   $('stText').textContent = !s.settings.modules.discord ? 'Module désactivé'
-    : b.ready ? `Connecté (${b.user || '?'})${b.forced ? ' — mode test manuel' : ''}`
+    : b.ready ? `Connecté (${b.user || '?'})${b.forced ? ' — lancé à la main : reste connecté jusqu'à « Déconnecter »' : ''}`
     : b.jitterSeconds ? `Connexion dans ${b.jitterSeconds} s…`
     : b.running ? 'Connexion en cours…'
     : !s.configured ? 'Configuration incomplète'
     : b.shouldRun ? 'Va se connecter' : 'En attente de la plage horaire (se connecte 30 min avant)';
+  loadInputs(s).catch(() => {});
+  $('defFolder').textContent = s.clips.defaultFolder;
+  const m = s.mic;
+  $('micState').textContent = !m.enabled ? 'Surveillance désactivée.' : !m.configured ? 'Aucun micro mémorisé.' : m.state === 'warning' ? '⚠ ' + m.message : m.state === 'fixed' ? '🔧 ' + m.message : `✅ « ${m.input} » en place.`;
+  $('micState').style.color = m.state === 'warning' ? 'var(--bad)' : '';
   $('log').textContent = b.log.length ? b.log.join('\n') : '—';
 }
 
@@ -161,6 +196,8 @@ $('btnSave').onclick = async () => {
 $('btnSave2').onclick = () => $('btnSave').onclick();
 $('btnStart').onclick = async () => { const r = await post('/api/discord/start'); say(r.ok ? 'Connexion lancée.' : r.error, !r.ok); refresh(); };
 $('btnStop').onclick = async () => { await post('/api/discord/stop'); refresh(); };
+$('btnMicSave').onclick = async () => { const r = await post('/api/mic/remember', { input: $('micSel').value }); say(r.ok ? 'Micro mémorisé.' : r.error, !r.ok); inputsKey = ''; refresh(); };
+$('btnMicForget').onclick = async () => { await post('/api/mic/forget'); inputsKey = ''; refresh(); };
 $('btnDetect').onclick = async () => {
   say('Rejoins maintenant le salon vocal cible (2 min max)…');
   const b = collect();

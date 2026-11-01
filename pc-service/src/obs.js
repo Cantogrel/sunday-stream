@@ -197,6 +197,48 @@ export class ObsController extends EventEmitter {
     return existed ? { created: false, name: MIC_INPUT_NAME } : { created: true, name: MIC_INPUT_NAME, scenes: scenesCount };
   }
 
+  // ---- Micro de référence du stream (micGuard.js) ----
+  async listAudioInputs() {
+    const { inputs } = await this._call('GetInputList');
+    const special = await this._call('GetSpecialInputs').catch(() => ({}));
+    const specialNames = new Set(Object.values(special).filter(Boolean));
+    return inputs
+      .filter((i) => /wasapi|audio|input_capture|output_capture|pulse|coreaudio|alsa|dshow/i.test(i.inputKind))
+      .map((i) => ({ name: i.inputName, kind: i.inputKind, global: specialNames.has(i.inputName) }));
+  }
+
+  async getSpecialInputs() {
+    return this._call('GetSpecialInputs');
+  }
+
+  async getInputDevice(inputName) {
+    const { inputSettings, inputKind } = await this._call('GetInputSettings', { inputName });
+    return { deviceId: String(inputSettings.device_id ?? ''), kind: inputKind };
+  }
+
+  async setInputDevice(inputName, deviceId) {
+    await this._call('SetInputSettings', { inputName, inputSettings: { device_id: deviceId } });
+  }
+
+  async createMicInput(inputName, deviceId) {
+    const { currentProgramSceneName } = await this._call('GetCurrentProgramScene');
+    await this._call('CreateInput', { sceneName: currentProgramSceneName, inputName, inputKind: 'wasapi_input_capture', inputSettings: { device_id: deviceId }, sceneItemEnabled: true });
+  }
+
+  async getInputTracks(inputName) {
+    const { inputAudioTracks } = await this._call('GetInputAudioTracks', { inputName });
+    return inputAudioTracks;
+  }
+
+  async setInputTracks(inputName, tracks) {
+    await this._call('SetInputAudioTracks', { inputName, inputAudioTracks: tracks });
+  }
+
+  async isInputMuted(inputName) {
+    const { inputMuted } = await this._call('GetInputMute', { inputName });
+    return inputMuted;
+  }
+
   async hasMicSource() {
     const { inputs } = await this._call('GetInputList');
     return inputs.some((i) => i.inputName === MIC_INPUT_NAME);

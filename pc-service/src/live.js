@@ -44,6 +44,7 @@ export async function buildLive({ obs, discord, chat, viewers }) {
       lockAvailable: Boolean(lock?.available),
       lastEnd: lock?.lastEnd ?? null,
     },
+    mic: discord?.micGuard?.status() ?? null,
     viewers: viewers?.value ?? { live: false, viewers: null, chatters: null },
     chat: messages.map((m) => ({ id: m.id, name: m.displayName, text: m.text, at: m.timestamp, mod: m.isMod })),
     clips: discordOn || settings?.modules.clips ? (discord.clips.status().recent || []).slice().reverse() : [],

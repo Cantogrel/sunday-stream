@@ -1,9 +1,12 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { setEnvVar } from '../envFile.js';
+import { FfmpegTool } from '../ffmpeg.js';
 import { DATA_DIR } from '../paths.js';
 import { DiscordBot } from './bot.js';
-import { ClipsModule } from './clips.js';
+import { ActivityMonitor } from './activity.js';
+import { ClipsModule, DEFAULT_CLIPS_FOLDER } from './clips.js';
+import { MicGuard } from './micGuard.js';
 import { ConfirmDialog } from './confirm.js';
 import { decodeInvite, encodeInvite } from './logic.js';
 import { findLegacyBot, readLegacyEnv, retireLegacy } from './legacy.js';
@@ -14,7 +17,10 @@ export function createDiscordModules({ obs }) {
   const settings = new SettingsStore();
   const confirm = new ConfirmDialog();
   const bot = new DiscordBot({ obs, settings, confirm });
-  const clips = new ClipsModule({ obs, bot, settings });
+  const ffmpeg = new FfmpegTool({ log: (m) => bot.log(m) });
+  const activity = new ActivityMonitor({ log: (m) => bot.log(m) });
+  const clips = new ClipsModule({ obs, bot, settings, ffmpeg, activity });
+  const micGuard = new MicGuard({ obs, settings, log: (m) => bot.log(m) });
 
   // L'app Windows lit hotkey.json (comme confirm-request.json) pour enregistrer
   // le raccourci clavier global de clip ; elle le relit toutes les 2 s.
@@ -34,7 +40,8 @@ export function createDiscordModules({ obs }) {
     hasToken: await settings.hasToken(),
     configured: await bot.configured(),
     bot: bot.status(),
-    clips: clips.status(),
+    clips: { ...clips.status(), ffmpeg: { installed: ffmpeg.isInstalled(), ...ffmpeg.status() }, activity: activity.running, defaultFolder: DEFAULT_CLIPS_FOLDER },
+    mic: micGuard.status(),
     dialog: confirm.info(),
   });
 
@@ -47,7 +54,8 @@ export function createDiscordModules({ obs }) {
       case 'POST /api/discord/settings': {
         const prev = settings.get();
         if (typeof body.token === 'string' && body.token.trim()) await settings.setToken(body.token);
-        settings.update({ modules: body.modules, discord: body.discord, clips: body.clips });
+        settings.update({ modules: body.modules, discord: body.discord, clips: body.clips, stream: typeof body.micGuard === 'boolean' ? { micGuard: body.micGuard } : undefined });
+        if (body.modules && !settings.get().modules.clips) activity.stop();
         syncHotkey();
         // Modules : un module désactivé coupe immédiatement le bot.
         if (!settings.get().modules.discord && bot.running) await bot.stop('Module Discord désactivé');
@@ -126,6 +134,16 @@ export function createDiscordModules({ obs }) {
         return { ok: true, notes: await retireLegacy(l) };
       }
 
+      // Micro de référence : liste des entrées audio d'OBS, mémorisation, oubli, vérification immédiate.
+      case 'GET /api/obs/inputs':
+        return obs.connected ? { ok: true, inputs: await obs.listAudioInputs() } : { ok: false, error: "OBS n'est pas connecté." };
+      case 'POST /api/mic/remember':
+        try { return { ok: true, mic: await micGuard.remember(String(body.input || '')) }; } catch (err) { return { ok: false, error: err.message }; }
+      case 'POST /api/mic/forget':
+        return { ok: true, mic: micGuard.forget() };
+      case 'POST /api/mic/check':
+        return { ok: true, mic: await micGuard.check() };
+
       case 'POST /api/clips/trigger':
         return clips.trigger({ source: 'bouton' });
       default:
@@ -134,14 +152,16 @@ export function createDiscordModules({ obs }) {
   }
 
   return {
-    settings, confirm, bot, clips, handle,
+    settings, confirm, bot, clips, micGuard, handle,
     start() {
       syncHotkey();
       clips.start();
+      micGuard.start();
       bot.startScheduler();
     },
     async shutdown() {
       bot.stopScheduler();
+      activity.stop();
       await bot.stop('Arrêt du service');
     },
   };

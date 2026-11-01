@@ -34,6 +34,7 @@ export class SettingsStore {
       modules: { ...cur.modules, ...(patch.modules || {}) },
       discord: { ...cur.discord, ...(patch.discord || {}) },
       clips: { ...cur.clips, ...(patch.clips || {}) },
+      stream: { ...cur.stream, ...(patch.stream || {}) },
     });
     mkdirSync(DATA_DIR, { recursive: true });
     writeFileSync(FILE, JSON.stringify(next, null, 2));

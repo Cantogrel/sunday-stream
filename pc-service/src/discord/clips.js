@@ -1,17 +1,30 @@
 import { EventEmitter } from 'node:events';
-import { copyFileSync, existsSync, mkdirSync, statSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, renameSync, statSync, unlinkSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { basename, extname, join } from 'node:path';
 import { AttachmentBuilder, EmbedBuilder } from 'discord.js';
 import { DATA_DIR } from '../paths.js';
 import { MIC_INPUT_NAME } from '../obs.js';
+import { EmotionDetector, VoiceGate, activityLevel, dbOf } from './moments.js';
 import { CLIP_STATUS, clipDescription, clipFooter, computeClipStatus, parseClipFooter } from './logic.js';
 
 export const CLIPS_DIR = join(DATA_DIR, 'clips');
-const WEIGHTS = { mic: 0.3, speech: 0.3, input: 0.4 };
-const MIN_DURATION_TICKS = 3;
+export const DEFAULT_CLIPS_FOLDER = join(homedir(), 'Videos', 'Sunday Stream Clips');
 const MIC_RE = /mic|micro|aux|voix|voice/i;
 const OK_EMOJI = '✅';
 const KO_EMOJI = '❌';
+
+// OBS crée le fichier avant d'avoir fini de l'écrire : on attend que sa taille se stabilise
+// avant de le déplacer ou de l'envoyer (sinon Discord reçoit un clip tronqué).
+async function waitStable(path, { tries = 30, every = 500 } = {}) {
+  let last = -1;
+  for (let i = 0; i < tries; i++) {
+    const size = statSync(path).size;
+    if (size > 0 && size === last) return;
+    last = size;
+    await new Promise((r) => setTimeout(r, every));
+  }
+}
 
 // Normalisation adaptative par signal (contrat §7) : la valeur est la part du
 // niveau au-dessus du bruit de fond (baseline) rapportée à la dynamique vue.
@@ -46,17 +59,23 @@ function fileLimitBytes(guild) {
 //   Inputs = pic des autres entrées (audio du jeu).
 // Le score composite garde les pondérations 0,3 / 0,3 / 0,4 de l'ancien exe.
 export class ClipsModule extends EventEmitter {
-  constructor({ obs, bot, settings }) {
+  constructor({ obs, bot, settings, ffmpeg = null, activity = null, clock = () => Date.now() }) {
     super();
+    this.ffmpeg = ffmpeg;
+    this.activity = activity;
+    this.clock = clock;
     this.obs = obs;
     this.bot = bot;
     this.settings = settings;
     this.busy = false;
     this.recent = [];
-    this.norm = { mic: new Normalizer(), speech: new Normalizer(), input: new Normalizer() };
-    this.acc = { mic: 0, game: 0, spike: 0 };
-    this.prevPeaks = new Map();
-    this.streak = 0;
+    // Micro et voix des amis : émotions lues dans l'enveloppe sonore (moments.js) ;
+    // Inputs : activité manette / clavier / souris, normalisée.
+    this.emotion = { mic: new EmotionDetector(), voice: new EmotionDetector() };
+    this.gate = new VoiceGate(); // filtre de voix appliqué au son du PC
+    this.desktopNames = new Set();
+    this._desktopAt = 0;
+    this.norm = { input: new Normalizer() };
     this.cooldown = 0;
     this.active = false;
     this.maxScore = 0;
@@ -104,15 +123,36 @@ export class ClipsModule extends EventEmitter {
     if (stopped.length) this.bot.log(`(clips) stream arrêté : ${stopped.join(' et ')} coupé${stopped.length > 1 ? 's' : ''}.`);
   }
 
+  // Niveaux OBS (~20/s) : le micro et les entrées « voix des amis » alimentent chacun un
+  // détecteur d'émotion ; le son du jeu est volontairement ignoré (toujours fort, peu parlant).
   _onMeters(inputs) {
+    const t = this.clock();
+    const stream = this.settings.get().stream;
+    // Voix des amis : entrées choisies, sinon le son du PC (où passe Discord), repéré automatiquement.
+    const voiceNames = this.cfg.voiceInputs.length ? new Set(this.cfg.voiceInputs) : this.desktopNames;
+    let mic = null;
+    let voice = null;
     for (const i of inputs || []) {
       const peak = Math.max(0, ...(i.inputLevelsMul || []).map((c) => c[1] || 0));
-      const prev = this.prevPeaks.get(i.inputName) ?? peak;
-      this.prevPeaks.set(i.inputName, peak);
-      const isMic = i.inputName === MIC_INPUT_NAME || MIC_RE.test(i.inputName);
-      if (isMic) this.acc.mic = Math.max(this.acc.mic, peak);
-      else this.acc.game = Math.max(this.acc.game, peak);
-      this.acc.spike = Math.max(this.acc.spike, peak - prev);
+      if (voiceNames.has(i.inputName)) voice = Math.max(voice ?? 0, peak);
+      // Micro du PC (celui mémorisé, ou repéré par son nom) et flux micro du téléphone.
+      else if (i.inputName === MIC_INPUT_NAME || (stream.micInput ? i.inputName === stream.micInput : MIC_RE.test(i.inputName))) mic = Math.max(mic ?? 0, peak);
+    }
+    if (mic !== null) this.emotion.mic.push(t, dbOf(mic));
+    if (voice !== null) {
+      this.emotion.voice.push(t, dbOf(voice));
+      this.gate.push(t, dbOf(voice));
+    }
+  }
+
+  // Repère l'entrée « son du PC » d'OBS (capture de sortie audio) pour l'analyse de la voix des amis.
+  async _refreshDesktop() {
+    this._desktopAt = this.clock();
+    try {
+      const inputs = await this.obs.listAudioInputs();
+      this.desktopNames = new Set(inputs.filter((i) => /output_capture/.test(i.kind) || /desktop|bureau|son du pc|audio du pc/i.test(i.name)).map((i) => i.name));
+    } catch {
+      // OBS indisponible : on garde la liste précédente
     }
   }
 
@@ -120,12 +160,13 @@ export class ClipsModule extends EventEmitter {
     if (on === this.active) return;
     this.active = on;
     if (on) {
-      for (const n of Object.values(this.norm)) n.reset();
-      this.streak = 0;
+      this.norm.input.reset();
       this.cooldown = 0;
+      this.activity?.start();
       this.maxScore = 0;
       this.bot.log('(clips) détection démarrée — OBS diffuse sur cette machine.');
     } else {
+      this.activity?.stop();
       this.bot.log(`(clips) détection arrêtée. Score max atteint : ${this.maxScore.toFixed(2)} (seuil ${this.cfg.threshold}).`);
     }
   }
@@ -133,23 +174,24 @@ export class ClipsModule extends EventEmitter {
   async _tick() {
     const live = this.enabled && this.bot.ready && this.obs.connected && this.obs.streaming;
     this._setActive(Boolean(live));
-    const raw = this.acc;
-    this.acc = { mic: 0, game: 0, spike: 0 };
     if (!live) return;
-    const mic = this.norm.mic.push(raw.mic);
-    const speech = this.norm.speech.push(Math.max(0, raw.spike));
-    const input = this.norm.input.push(raw.game);
-    const score = WEIGHTS.mic * mic + WEIGHTS.speech * speech + WEIGHTS.input * input;
+    const t = this.clock();
+    if (this.obs.listAudioInputs && t - this._desktopAt > 60_000) await this._refreshDesktop();
+    const mic = this.emotion.mic.score(t).value;
+    // Le son du PC mélange jeu et amis : ce qui ressemble à de la voix compte à plein, le reste très peu.
+    const speech = this.emotion.voice.score(t).value * (0.15 + 0.85 * this.gate.likeness(t));
+    const sample = this.cfg.useActivity ? this.activity?.latest : null;
+    const input = sample ? this.norm.input.push(activityLevel(sample)) : 0;
+    // Les émotions (micro, ou voix des amis un peu moins sûre) font le score ; l'activité de jeu
+    // l'amplifie ou le tempère de ±15 % mais ne peut jamais déclencher un clip seule.
+    const score = Math.min(1, Math.max(mic, speech * 0.9) * (0.85 + 0.3 * input));
     this.lastScores = { score, mic, speech, input };
     this.maxScore = Math.max(this.maxScore, score);
     if (this.cooldown > 0) {
       this.cooldown -= 1;
-      this.streak = 0;
       return;
     }
-    this.streak = score > this.cfg.threshold ? this.streak + 1 : 0;
-    if (this.streak >= MIN_DURATION_TICKS) {
-      this.streak = 0;
+    if (score > this.cfg.threshold) {
       this.cooldown = this.cfg.cooldownSeconds;
       await this.trigger({ source: 'auto', scores: this.lastScores });
     }
@@ -170,8 +212,10 @@ export class ClipsModule extends EventEmitter {
         });
         return { ok: false, error: "Replay Buffer démarré à l'instant : il n'a encore rien enregistré. Réessaie dans quelques secondes." };
       }
-      const path = await this.obs.saveReplayBuffer((p) => existsSync(p));
-      if (!path) throw new Error('Fichier du clip introuvable après la sauvegarde.');
+      const saved = await this.obs.saveReplayBuffer((p) => existsSync(p));
+      if (!saved) throw new Error('Fichier du clip introuvable après la sauvegarde.');
+      await waitStable(saved);
+      const path = this.store(saved);
       const s = scores || { score: 0, mic: 0, speech: 0, input: 0 };
       const id = await this.publish(path, s);
       this.recent.push({ id, at: Date.now(), source, file: basename(path) });
@@ -185,22 +229,58 @@ export class ClipsModule extends EventEmitter {
     }
   }
 
+  // Dossier dédié aux clips (réglable), à la place du dossier d'enregistrement d'OBS.
+  get folder() {
+    return this.cfg.folder || DEFAULT_CLIPS_FOLDER;
+  }
+
+  // Déplace le fichier sauvegardé par OBS dans le dossier des clips ; en cas d'échec,
+  // le clip reste où OBS l'a mis (rien n'est perdu).
+  store(path) {
+    try {
+      mkdirSync(this.folder, { recursive: true });
+      let dest = join(this.folder, basename(path));
+      for (let n = 2; existsSync(dest); n++) dest = join(this.folder, `${basename(path, extname(path))} (${n})${extname(path)}`);
+      try {
+        renameSync(path, dest);
+      } catch (err) {
+        if (err.code !== 'EXDEV') throw err;
+        copyFileSync(path, dest);
+        unlinkSync(path);
+      }
+      return dest;
+    } catch (err) {
+      this.bot.log(`(clips) dossier des clips inutilisable (${err.message}) — fichier laissé dans le dossier d'OBS.`);
+      return path;
+    }
+  }
+
   // ---- publication (contrat §8.1) ----
   async publish(path, scores) {
     const channel = await this.bot.client.channels.fetch(this.settings.get().discord.clipsChannelId);
-    const size = statSync(path).size;
     const embed = new EmbedBuilder()
       .setTitle(CLIP_STATUS.pending.label)
       .setColor(CLIP_STATUS.pending.color)
       .setDescription(clipDescription(scores));
     const payload = { embeds: [embed] };
-    if (size < fileLimitBytes(channel.guild)) {
-      payload.files = [new AttachmentBuilder(path)];
+    const limit = fileLimitBytes(channel.guild);
+    // Discord ne lit que du MP4 H.264 et limite la taille : ffmpeg (téléchargé au premier usage)
+    // convertit ou réencode au besoin ; l'original reste dans le dossier des clips.
+    const size = statSync(path).size;
+    const prepared = this.ffmpeg ? await this.ffmpeg.prepare(path, limit) : null;
+    const compressed = prepared;
+    if (compressed || size < limit) {
+      payload.files = [new AttachmentBuilder(compressed ? compressed.path : path, compressed ? { name: `${basename(path, extname(path))}.mp4` } : undefined)];
     } else {
       embed.addFields({ name: 'Fichier trop volumineux pour Discord', value: `Récupère-le localement : \`${path}\``, inline: false });
     }
     // Envoi SANS pied, puis édition pour le poser : tant que le pied manque, le message n'est pas un clip.
-    const msg = await channel.send(payload);
+    let msg;
+    try {
+      msg = await channel.send(payload);
+    } finally {
+      compressed?.cleanup();
+    }
     embed.setFooter({ text: clipFooter(msg.id, 'pending') });
     await msg.edit({ embeds: [embed] });
     await msg.react(OK_EMOJI);

@@ -103,6 +103,9 @@
     } else if (s.obs.connected) {
       health += kv('Diffusion', 'arrêtée', 'warn');
     }
+    if (s.mic && !s.mic.enabled) health += kv('Micro', 'surveillance désactivée', '');
+    else if (s.mic?.configured) health += kv('Micro', s.mic.state === 'warning' ? '⚠ ' + s.mic.message : s.mic.state === 'fixed' ? '🔧 ' + s.mic.message : 'en place', s.mic.state === 'warning' ? 'bad' : s.mic.state === 'fixed' ? 'warn' : 'ok');
+    else if (s.obs.connected) health += kv('Micro', 'non mémorisé (Discord → Micro de stream)', 'warn');
     if (s.viewers?.chatters != null) health += kv('Connectés au chat', s.viewers.chatters);
     $('health').innerHTML = health;
 

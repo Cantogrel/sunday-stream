@@ -193,7 +193,7 @@ export function createStaticServer({ getStatus, getDiagnostics, setup, launchObs
         setTimeout(() => shutdown?.(), 50);
         return;
       }
-      if (discord && (urlPath.startsWith('/api/discord') || urlPath.startsWith('/api/clips'))) {
+      if (discord && (urlPath.startsWith('/api/discord') || urlPath.startsWith('/api/clips') || urlPath.startsWith('/api/mic') || urlPath === '/api/obs/inputs')) {
         let body = {};
         try {
           body = req.method === 'POST' ? await readBody(req, 16384) : {};

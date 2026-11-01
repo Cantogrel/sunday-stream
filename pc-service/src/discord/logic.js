@@ -191,7 +191,9 @@ export const DEFAULT_SETTINGS = {
     hourEnd: 23,
     startingScene: 'Démarrage',
   },
-  clips: { threshold: 0.65, cooldownSeconds: 90, stopWithStream: false, hotkey: 'Ctrl+Alt+C' },
+  clips: { threshold: 0.65, cooldownSeconds: 90, stopWithStream: false, hotkey: 'Ctrl+Alt+C', folder: '', voiceInputs: [], useActivity: true },
+  // Micro de référence du stream : mémorisé une fois, vérifié et remis en place tout seul (micGuard.js).
+  stream: { micInput: '', micDeviceId: '', micTracks: null, micGuard: true },
 };
 
 // 0 est une valeur valide (contrairement à l'ancien `or` Python).
@@ -203,6 +205,7 @@ function hour(v, fallback) {
 export function normalizeSettings(raw = {}) {
   const d = { ...DEFAULT_SETTINGS.discord, ...(raw.discord || {}) };
   const c = { ...DEFAULT_SETTINGS.clips, ...(raw.clips || {}) };
+  const st = { ...DEFAULT_SETTINGS.stream, ...(raw.stream || {}) };
   const idStr = (v) => (ID_RE.test(String(v ?? '').trim()) ? String(v).trim() : '');
   const out = {
     modules: { ...DEFAULT_SETTINGS.modules, ...(raw.modules || {}) },
@@ -221,6 +224,16 @@ export function normalizeSettings(raw = {}) {
       cooldownSeconds: Number.isInteger(Number(c.cooldownSeconds)) && Number(c.cooldownSeconds) >= 0 ? Number(c.cooldownSeconds) : 90,
       stopWithStream: Boolean(c.stopWithStream),
       hotkey: HOTKEY_RE.test(String(c.hotkey ?? '').trim()) ? String(c.hotkey).trim() : '',
+      folder: String(c.folder ?? '').trim(),
+      // Entrées OBS portant la voix des amis (ex. la capture de Discord) ; vide = aucune analyse.
+      voiceInputs: Array.isArray(c.voiceInputs) ? c.voiceInputs.map((n) => String(n).trim()).filter(Boolean).slice(0, 8) : [],
+      useActivity: c.useActivity !== false,
+    },
+    stream: {
+      micInput: String(st.micInput ?? '').trim(),
+      micDeviceId: String(st.micDeviceId ?? ''),
+      micTracks: st.micTracks && typeof st.micTracks === 'object' ? st.micTracks : null,
+      micGuard: st.micGuard !== false,
     },
   };
   for (const k of Object.keys(out.modules)) out.modules[k] = Boolean(out.modules[k]);
