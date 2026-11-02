@@ -191,7 +191,7 @@ export const DEFAULT_SETTINGS = {
     hourEnd: 23,
     startingScene: 'Démarrage',
   },
-  clips: { threshold: 0.65, cooldownSeconds: 90, stopWithStream: false, hotkey: 'Ctrl+Alt+C', folder: '', voiceInputs: [], useActivity: true, auto: true },
+  clips: { threshold: 0.75, keepSeconds: 45, cooldownSeconds: 90, stopWithStream: false, hotkey: 'Ctrl+Alt+C', folder: '', voiceInputs: [], useActivity: true, auto: true },
   // Micro de référence du stream : mémorisé une fois, vérifié et remis en place tout seul (micGuard.js).
   stream: { micInput: '', micDeviceId: '', micTracks: null, micGuard: true },
 };
@@ -220,7 +220,8 @@ export function normalizeSettings(raw = {}) {
       startingScene: String(d.startingScene || 'Démarrage'),
     },
     clips: {
-      threshold: Number(c.threshold) > 0 && Number(c.threshold) <= 1 ? Number(c.threshold) : 0.65,
+      threshold: Number(c.threshold) > 0 && Number(c.threshold) <= 1 ? Number(c.threshold) : 0.75,
+      keepSeconds: c.keepSeconds != null && Number.isFinite(Number(c.keepSeconds)) && Number(c.keepSeconds) >= 0 ? Math.min(600, Math.round(Number(c.keepSeconds))) : 45,
       cooldownSeconds: Number.isInteger(Number(c.cooldownSeconds)) && Number(c.cooldownSeconds) >= 0 ? Number(c.cooldownSeconds) : 90,
       stopWithStream: Boolean(c.stopWithStream),
       hotkey: HOTKEY_RE.test(String(c.hotkey ?? '').trim()) ? String(c.hotkey).trim() : '',

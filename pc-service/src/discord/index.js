@@ -1,3 +1,5 @@
+import { StreamHistory } from './history.js';
+import { ClipLearner } from './learning.js';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { setEnvVar } from '../envFile.js';
@@ -19,7 +21,9 @@ export function createDiscordModules({ obs }) {
   const bot = new DiscordBot({ obs, settings, confirm });
   const ffmpeg = new FfmpegTool({ log: (m) => bot.log(m) });
   const activity = new ActivityMonitor({ log: (m) => bot.log(m) });
-  const clips = new ClipsModule({ obs, bot, settings, ffmpeg, activity });
+  const learner = new ClipLearner();
+  const history = new StreamHistory();
+  const clips = new ClipsModule({ obs, bot, settings, ffmpeg, activity, learner, history });
   const micGuard = new MicGuard({ obs, settings, log: (m) => bot.log(m) });
 
   // L'app Windows lit hotkey.json (comme confirm-request.json) pour enregistrer
@@ -143,6 +147,14 @@ export function createDiscordModules({ obs }) {
         return { ok: true, mic: micGuard.forget() };
       case 'POST /api/mic/check':
         return { ok: true, mic: await micGuard.check() };
+
+      case 'POST /api/clips/learning/reset':
+        learner.reset();
+        return { ok: true, learning: learner.summary() };
+
+      case 'POST /api/clips/history/reset':
+        history.reset();
+        return { ok: true };
 
       case 'POST /api/clips/trigger':
         return clips.trigger({ source: 'bouton' });

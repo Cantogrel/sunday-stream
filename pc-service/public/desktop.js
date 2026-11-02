@@ -15,8 +15,7 @@ const st = {
 };
 
 function toast(text) {
-  const t = $('toast'); t.textContent = text; t.classList.remove('hidden');
-  clearTimeout(toast.timer); toast.timer = setTimeout(() => t.classList.add('hidden'), 4000);
+  ui.toast(text, 'err');
 }
 
 // ---------- service (HTTP) ----------
@@ -352,12 +351,10 @@ $('updateBtn').onclick = async () => {
   if (live && !confirm('Un live est en cours : l’installation ferme l’application et le coupe côté service. Installer quand même ?')) return;
   const r = await (await fetch(st.update?.state === 'error' ? '/api/update/check' : '/api/update/install', { method: 'POST', body: JSON.stringify({ force: live }) })).json();
   if (!r.ok) toast(r.error);
+  else ui.toast(st.update?.state === 'error' ? 'Nouvelle recherche lancée…' : 'Installation lancée : l’application va redémarrer.', 'ok');
 };
 
-$('checkUpdateBtn').onclick = async () => {
-  const r = await (await fetch('/api/update/check', { method: 'POST' })).json();
-  toast(r.ok ? 'Recherche en cours…' : r.error);
-};
+$('checkUpdateBtn').onclick = () => ui.checkUpdate();
 
 // ---------- téléphone & infos ----------
 
@@ -422,6 +419,7 @@ $('copyReport').onclick = async () => {
       const ta = document.createElement('textarea');
       ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
     }
+    ui.toast('Rapport de diagnostic copié.', 'ok');
     $('reportMsg').textContent = 'Rapport copié : colle-le dans un message (aucun mot de passe ni jeton n\'y figure).';
   } catch { $('reportMsg').textContent = 'Le service ne répond pas.'; }
 };

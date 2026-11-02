@@ -1,0 +1,27 @@
+/* Retour visuel commun à toutes les pages : survol, clic, focus clavier, action en cours, notifications.
+   Chargé après le style de chaque page ; ne touche pas aux couleurs propres aux boutons. */
+button, a.btn, summary { transition: filter .12s, transform .08s, box-shadow .12s, opacity .12s; }
+button:not(:disabled):hover, a.btn:hover { filter: brightness(1.18); box-shadow: 0 0 0 1px rgba(255,255,255,.12); }
+button:not(:disabled):active, a.btn:active { transform: translateY(1px) scale(.97); filter: brightness(.88); }
+button:focus-visible, a.btn:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid #8ab4ff; outline-offset: 2px; }
+button:disabled { cursor: not-allowed; }
+button[title]:disabled { cursor: help; }
+
+/* action en cours : le bouton reste lisible mais inactif, avec un indicateur qui tourne */
+button.ui-busy { position: relative; pointer-events: none; cursor: progress; filter: brightness(.85); }
+button.ui-busy::before {
+  content: ''; display: inline-block; width: .8em; height: .8em; margin-right: .5em; vertical-align: -.1em;
+  border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: ui-spin .7s linear infinite;
+}
+@keyframes ui-spin { to { transform: rotate(360deg); } }
+
+#ui-toast {
+  position: fixed; left: 50%; bottom: 1.2rem; transform: translate(-50%, 1rem); opacity: 0; pointer-events: none; z-index: 1000;
+  max-width: min(32rem, 92vw); padding: .65rem 1.1rem; border-radius: 8px; font: .85rem/1.35 system-ui, sans-serif;
+  background: #23232b; color: #eee; border: 1px solid #3a3a45; box-shadow: 0 6px 24px rgba(0,0,0,.45);
+  transition: opacity .18s, transform .18s;
+}
+#ui-toast.show { opacity: 1; transform: translate(-50%, 0); }
+#ui-toast.ok { border-color: #2f9e6e; } #ui-toast.ok::before { content: '✓ '; color: #4cd5a0; font-weight: 700; }
+#ui-toast.err { border-color: #c0504d; } #ui-toast.err::before { content: '⚠ '; color: #ff8a85; font-weight: 700; }
+@media (prefers-reduced-motion: reduce) { button, #ui-toast, button.ui-busy::before { transition: none; animation: none; } }

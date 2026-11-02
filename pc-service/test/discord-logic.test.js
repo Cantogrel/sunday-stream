@@ -100,6 +100,6 @@ test('réglages : heure 0 valide, bornes et défauts', () => {
   assert.equal(s.discord.hourStart, 0);
   assert.equal(s.discord.hourEnd, 5);
   assert.equal(s.discord.userId, '');
-  assert.equal(s.clips.threshold, 0.65);
+  assert.equal(s.clips.threshold, 0.75);
   assert.equal(normalizeSettings({ discord: { hourStart: 22, hourEnd: 21 } }).discord.hourEnd, 23);
 });

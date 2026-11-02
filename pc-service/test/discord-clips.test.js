@@ -34,7 +34,7 @@ function setup({ obsOver = {} } = {}) {
     edit: async (p) => calls.push(['edit', p.embeds[0].toJSON()]),
   };
   bot.client = { user: { id: 'BOT' }, channels: { fetch: async () => channel } };
-  const clips = new ClipsModule({ obs, bot, settings: settingsWith() });
+  const clips = new ClipsModule({ obs, bot, settings: settingsWith(), postRoll: null });
   return { obs, bot, clips, calls };
 }
 
@@ -299,7 +299,7 @@ function streamSetup({ clipsOn = true, stopWithStream = false, rec = true, rb = 
   });
   const bot = new DiscordBot({ obs, settings: settingsWith(), confirm: {} });
   const settings = { get: () => normalizeSettings({ modules: { discord: true, clips: clipsOn }, discord: { clipsChannelId: '44444' }, clips: { stopWithStream } }) };
-  return { clips: new ClipsModule({ obs, bot, settings }), log, state };
+  return { clips: new ClipsModule({ obs, bot, settings, postRoll: null }), log, state };
 }
 
 test('Clips actif : le Replay Buffer démarre avec le stream, sans doublon', async () => {
@@ -334,4 +334,28 @@ test('Réglages : raccourci valide gardé, invalide effacé, défaut Ctrl+Alt+C'
   assert.equal(normalizeSettings({ clips: { hotkey: 'C' } }).clips.hotkey, '');
   assert.equal(normalizeSettings({ clips: { hotkey: '' } }).clips.hotkey, '');
   assert.equal(normalizeSettings({ clips: { hotkey: 'Ctrl+Alt+Del' } }).clips.hotkey, '');
+});
+
+test('clip automatique : attend la fin du moment fort avant de sauvegarder', async () => {
+  const clips = new ClipsModule({ obs: Object.assign(new EventEmitter(), { streaming: true }), bot: new EventEmitter(), settings: settingsWith(), postRoll: { minMs: 300, maxMs: 3000, quietMs: 300 } });
+  clips.lastScores = { score: 1 };
+  const t0 = Date.now();
+  setTimeout(() => { clips.lastScores = { score: 0.05 }; }, 800);
+  await clips._waitMomentEnd();
+  const waited = Date.now() - t0;
+  assert.ok(waited >= 1000 && waited < 2000, `attente ${waited} ms`);
+  clips.lastScores = { score: 1 };
+  const t1 = Date.now();
+  await clips._waitMomentEnd();
+  assert.ok(Date.now() - t1 >= 2900, 'plafonné à maxMs si le moment ne retombe pas');
+});
+
+test('chat : un afflux par rapport au rythme habituel renforce, un chat calme ou absent ne compte pas', () => {
+  const clips = new ClipsModule({ obs: Object.assign(new EventEmitter(), { streaming: true }), bot: new EventEmitter(), settings: settingsWith(), postRoll: null });
+  assert.equal(clips.chatBoost(), 0);
+  const now = Date.now();
+  clips.chatTimes = Array.from({ length: 10 }, (_, i) => now - 290_000 + i * 20_000); // ~1 message / 20 s
+  assert.equal(clips.chatBoost(now), 0);
+  clips.chatTimes.push(...Array.from({ length: 12 }, (_, i) => now - i * 500)); // 12 messages en 6 s
+  assert.ok(clips.chatBoost(now) > 0.5);
 });

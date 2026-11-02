@@ -22,6 +22,8 @@
   [hidden] { display: none !important; }
   #msg { color: var(--dim); font-size: .8rem; min-height: 1.1em; }
 </style>
+<link rel="stylesheet" href="ui.css">
+<script src="ui.js"></script>
 </head>
 <body>
 <main>
@@ -29,8 +31,8 @@
 
   <div class="card">
     <h2>Application</h2>
-    <div class="row"><span>Version<small id="upd">Vérification…</small></span><span><b id="ver">–</b> <button id="chk" type="button">Rechercher une mise à jour</button></span></div>
-    <div class="row" id="installRow" hidden><span id="installText"></span><button class="primary" id="install" type="button">Installer</button></div>
+    <div class="row"><span>Version<small id="upd">Vérification…</small></span><span><b id="ver">–</b> <button id="chk" data-doing="Recherche…" type="button">Rechercher une mise à jour</button></span></div>
+    <div class="row" id="installRow" hidden><span id="installText"></span><button class="primary" id="install" data-doing="Démarrage…" type="button">Installer</button></div>
   </div>
 
   <div class="card">
@@ -40,7 +42,7 @@
 
   <div class="card">
     <h2>Diagnostic</h2>
-    <div class="row"><span>Rapport de diagnostic<small>Texte à joindre en cas de problème (les secrets sont masqués)</small></span><button id="report" type="button">Copier</button></div>
+    <div class="row"><span>Rapport de diagnostic<small>Texte à joindre en cas de problème (les secrets sont masqués)</small></span><button id="report" data-doing="Copie…" type="button">Copier</button></div>
     <div id="msg"></div>
   </div>
 </main>
@@ -61,14 +63,14 @@
       $('installText').textContent = u.state === 'available' ? `Installer la version ${u.version} (ferme l'application puis la relance)` : '';
     } catch { $('upd').textContent = 'Service indisponible'; }
   }
-  $('chk').onclick = async () => { await api('/api/update/check', { method: 'POST' }).catch(() => {}); setTimeout(refresh, 3500); };
+  $('chk').onclick = async () => { await ui.checkUpdate(); refresh(); };
   $('install').onclick = async () => {
     const r = await api('/api/update/install', { method: 'POST', body: '{}' });
     if (!r.ok) $('msg').textContent = r.error;
   };
   $('wizard').onclick = () => post({ url: '/setup' });
   $('report').onclick = async () => {
-    try { await navigator.clipboard.writeText((await api('/api/diagnostics')).text); $('msg').textContent = 'Rapport copié dans le presse-papiers.'; }
+    try { await navigator.clipboard.writeText((await api('/api/diagnostics')).text); $('msg').textContent = 'Rapport copié dans le presse-papiers.'; ui.toast('Rapport de diagnostic copié.', 'ok'); }
     catch { $('msg').textContent = 'Copie impossible.'; }
   };
   refresh();

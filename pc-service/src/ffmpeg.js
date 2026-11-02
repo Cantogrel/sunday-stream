@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { createReadStream, createWriteStream, existsSync, mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync, statSync } from 'node:fs';
+import { copyFileSync, createReadStream, createWriteStream, existsSync, mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { extname, join } from 'node:path';
 import { Readable } from 'node:stream';
@@ -14,6 +14,7 @@ const BASE_URL = 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.z
 export const FFMPEG_DIR = join(DATA_DIR, 'ffmpeg');
 const AUDIO_BPS = 96_000;
 const MIN_VIDEO_BPS = 150_000;
+const TRIM_VIDEO_BPS = 600_000; // débit visé quand on doit rogner un clip trop long
 
 export const run = (file, args, timeout) =>
   new Promise((resolve, reject) =>
@@ -98,7 +99,8 @@ export class FfmpegTool {
       const root = readdirSync(join(work, 'x')).find((n) => existsSync(join(work, 'x', n, 'bin', 'ffmpeg.exe')));
       if (!root) throw new Error("ffmpeg.exe introuvable dans l'archive");
       mkdirSync(this.dir, { recursive: true });
-      renameSync(join(work, 'x', root, 'bin', 'ffmpeg.exe'), this.exe + '.part');
+      // copie (et non déplacement) : le dossier temporaire peut être sur un autre disque que les données
+      copyFileSync(join(work, 'x', root, 'bin', 'ffmpeg.exe'), this.exe + '.part');
       renameSync(this.exe + '.part', this.exe);
       this._set('done', 'ffmpeg est installé.');
       this.log('(ffmpeg) installé.');
@@ -109,6 +111,34 @@ export class FfmpegTool {
       throw err;
     } finally {
       rmSync(work, { recursive: true, force: true });
+    }
+  }
+
+  // Garde les `keepSec` meilleures secondes d'un clip trop long : la fenêtre se termine `tailSec` avant
+  // la fin du fichier (le silence qui suit le moment fort est écarté) et remplace l'original.
+  // Coupe sans réencodage (au plus proche point d'accès avant le début) ; renvoie la durée
+  // gardée, ou null si rien n'a été fait (clip déjà assez court, ffmpeg absent, échec).
+  async trimClip(input, { keepSec, tailSec = 0 }) {
+    if (!(keepSec > 0)) return null;
+    let exe;
+    try { exe = await this.ensure(); } catch { return null; }
+    const probe = await this.run(exe, ['-hide_banner', '-i', input], 30_000).catch((e) => ({ err: e.stderr || e.message }));
+    const { duration } = parseStreams(probe.err);
+    if (!duration || duration <= keepSec + 1) return null;
+    const end = Math.max(keepSec, duration - Math.max(0, tailSec));
+    const start = Math.max(0, end - keepSec);
+    const ext = extname(input);
+    const out = `${input.slice(0, input.length - ext.length)}.trim${ext}`;
+    try {
+      await this.run(exe, ['-y', '-hide_banner', '-ss', start.toFixed(2), '-i', input, '-t', String(keepSec), '-c', 'copy', '-avoid_negative_ts', 'make_zero', out], 120_000);
+      if (statSync(out).size < 1024) throw new Error('sortie vide');
+      renameSync(out, input);
+      this.log(`(ffmpeg) clip réduit à ${keepSec} s (de ${Math.round(start)} s à ${Math.round(end)} s sur ${Math.round(duration)} s).`);
+      return keepSec;
+    } catch (err) {
+      rmSync(out, { force: true });
+      this.log(`(ffmpeg) découpe du clip impossible : ${err.message}`);
+      return null;
     }
   }
 
@@ -145,18 +175,26 @@ export class FfmpegTool {
       }
       // 2) réencodage H.264 : au débit qui tient sous la limite, ou en qualité normale si seul le codec posait problème
       const fit = size >= limitBytes;
-      const bps = fit ? videoBitrate(info.duration, limitBytes) : null;
+      let bps = fit ? videoBitrate(info.duration, limitBytes) : null;
+      // Trop long pour rester lisible : on garde la fin du clip (le moment fort), à un débit correct.
+      let trim = 0;
+      if (fit && !bps && info.duration) {
+        trim = Math.floor((limitBytes * 0.92 * 8) / (TRIM_VIDEO_BPS + AUDIO_BPS));
+        bps = videoBitrate(trim, limitBytes);
+        this.log(`(ffmpeg) clip de ${Math.round(info.duration)} s trop long : rognage aux ${trim} dernières secondes.`);
+      }
       if (fit && !bps) {
-        this.log('(ffmpeg) clip trop long pour être compressé sous la limite.');
+        this.log('(ffmpeg) durée du clip illisible : compression impossible.');
         cleanup();
         return null;
       }
+      const seek = trim ? ['-sseof', String(-trim)] : [];
       const rate = bps ? ['-b:v', String(bps), '-maxrate', String(Math.floor(bps * 1.2)), '-bufsize', String(bps * 2)] : ['-crf', '23'];
       const scale = bps && bps < 1_200_000 ? ['-vf', "scale=-2:'min(720,ih)'"] : [];
-      await this.run(exe, ['-y', '-hide_banner', '-i', input, ...scale, '-c:v', 'libx264', '-preset', 'veryfast', ...rate, '-c:a', 'aac', '-b:a', String(AUDIO_BPS), '-movflags', '+faststart', path], 10 * 60_000);
+      await this.run(exe, ['-y', '-hide_banner', ...seek, '-i', input, ...scale, '-c:v', 'libx264', '-preset', 'veryfast', ...rate, '-c:a', 'aac', '-b:a', String(AUDIO_BPS), '-movflags', '+faststart', path], 10 * 60_000);
       if (statSync(path).size >= limitBytes) throw new Error('sortie encore trop volumineuse');
       this.log(`(ffmpeg) clip réencodé : ${(statSync(path).size / 1048576).toFixed(1)} Mo.`);
-      return { path, cleanup };
+      return { path, cleanup, trimmed: trim || null };
     } catch (err) {
       this.log(`(ffmpeg) préparation du clip impossible : ${err.message}`);
       cleanup();

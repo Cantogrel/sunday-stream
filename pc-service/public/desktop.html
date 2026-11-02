@@ -22,6 +22,7 @@
   .btn:hover { border-color: #444; }
   .btn.primary { background: var(--ok); color: #06231a; border: none; font-weight: 700; }
   .btn.danger { background: var(--live); color: #fff; border: none; font-weight: 700; }
+  .btn.paused { border-color: var(--bad); color: var(--bad); }
   .btn:disabled { opacity: .45; cursor: default; }
   .hidden { display: none !important; }
 
@@ -104,6 +105,8 @@
 
   @media (max-width: 900px) { main { grid-template-columns: 1fr; overflow-y: auto; } .col { overflow: visible; } .chat { min-height: 24rem; } }
 </style>
+<link rel="stylesheet" href="ui.css">
+<script src="ui.js"></script>
 </head>
 <body>
 <script>{const v=new URLSearchParams(location.search).get('view');if(v)document.documentElement.dataset.view=v;}</script>
@@ -121,7 +124,7 @@
   <button class="btn" id="settingsBtn">Téléphone &amp; infos</button>
 </header>
 
-<div id="updateBanner" class="banner hidden"><span id="updateText"></span><button class="btn primary" id="updateBtn">Installer</button></div>
+<div id="updateBanner" class="banner hidden"><span id="updateText"></span><button class="btn primary" id="updateBtn" data-doing="Démarrage…">Installer</button></div>
 
 <main>
   <div class="col">
@@ -139,6 +142,7 @@
           <div class="duration" id="duration"></div>
         </div>
         <span class="spacer"></span>
+        <button class="btn hidden" id="clipsBtn" type="button">Clips auto</button>
         <button class="btn" id="micBtn" disabled>Micro OBS : –</button>
         <button class="btn primary" id="streamBtn" disabled>Démarrer le stream</button>
       </div>
@@ -164,7 +168,7 @@
       <label style="display:flex;gap:.5rem;align-items:center;font-size:.9rem;margin-bottom:.6rem"><input type="checkbox" id="micOn"> Surveiller et réparer automatiquement mon micro</label>
       <div style="display:flex;gap:.5rem;align-items:center">
         <select id="micSel" style="flex:1;background:#101014;color:var(--fg);border:1px solid var(--border);border-radius:8px;padding:.45rem .6rem"><option value="">— OBS non connecté —</option></select>
-        <button class="btn" id="btnMicSave" type="button">Mémoriser ce micro</button>
+        <button class="btn" id="btnMicSave" data-doing="Enregistrement…" type="button">Mémoriser ce micro</button>
         <button class="btn" id="btnMicForget" type="button">Oublier</button>
       </div>
       <p id="micState" style="min-height:1.2rem;margin:.6rem 0 0;font-size:.85rem;color:var(--dim)"></p>
@@ -193,8 +197,8 @@
   <div id="apkBox" class="hidden"></div>
   <div id="devBox"></div>
   <div class="row"><span>Téléphones connectés</span><b id="dlgPhones">0</b></div>
-  <div class="row"><span>Version du service</span><span><b id="dlgVersion">–</b> <button class="btn small" id="checkUpdateBtn" type="button">Rechercher une mise à jour</button></span></div>
-  <div style="display:flex;justify-content:space-between;margin-top:1rem"><button class="btn" id="copyReport">Copier le rapport de diagnostic</button><button class="btn" id="dlgClose">Fermer</button></div>
+  <div class="row"><span>Version du service</span><span><b id="dlgVersion">–</b> <button class="btn small" id="checkUpdateBtn" data-doing="Recherche…" type="button">Rechercher une mise à jour</button></span></div>
+  <div style="display:flex;justify-content:space-between;margin-top:1rem"><button class="btn" id="copyReport" data-doing="Copie…">Copier le rapport de diagnostic</button><button class="btn" id="dlgClose">Fermer</button></div>
   <div id="reportMsg" style="font-size:.78rem;color:var(--dim);margin-top:.4rem;text-align:right"></div>
 </dialog>
 
@@ -209,5 +213,6 @@
 <div id="toast" class="hidden"></div>
 <script src="desktop.js"></script>
 <script src="mic.js"></script>
+<script src="clips-toggle.js"></script>
 </body>
 </html>

@@ -1,3 +1,5 @@
+import { StreamHistory } from './history.js';
+import { ClipLearner } from './learning.js';
 import { EventEmitter } from 'node:events';
 import { copyFileSync, existsSync, mkdirSync, renameSync, statSync, unlinkSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -11,12 +13,22 @@ import { CLIP_STATUS, clipDescription, clipFooter, computeClipStatus, parseClipF
 export const CLIPS_DIR = join(DATA_DIR, 'clips');
 export const DEFAULT_CLIPS_FOLDER = join(homedir(), 'Videos', 'Sunday Stream Clips');
 const CALIBRATION_MS = 3 * 60_000;
+const CALIBRATION_SEEDED_MS = 90_000; // niveau habituel déjà connu d'un stream précédent
 const MIC_RE = /mic|micro|aux|voix|voice/i;
 const OK_EMOJI = '✅';
 const KO_EMOJI = '❌';
 
 // OBS crée le fichier avant d'avoir fini de l'écrire : on attend que sa taille se stabilise
 // avant de le déplacer ou de l'envoyer (sinon Discord reçoit un clip tronqué).
+// Un clip automatique n'est sauvegardé qu'une fois le moment terminé : le score doit être retombé
+// (sous la moitié du seuil) pendant `quietMs`, après au moins `minMs` et au plus `maxMs`.
+const clamp01 = (x) => Math.min(1, Math.max(0, x));
+const POST_ROLL = { minMs: 4000, maxMs: 15000, quietMs: 2000 };
+const SUSTAIN_TICKS = 2; // le score doit rester au-dessus du seuil ~2 s : un pic isolé n'est pas un moment fort
+const MOMENT_PAD_SEC = 4; // on garde ce qui suit la fin du moment avant de couper le silence
+const CHAT_WINDOW_MS = 10_000;
+const CHAT_BASE_MS = 5 * 60_000;
+
 async function waitStable(path, { tries = 30, every = 500 } = {}) {
   let last = -1;
   for (let i = 0; i < tries; i++) {
@@ -60,8 +72,14 @@ function fileLimitBytes(guild) {
 //   Inputs = pic des autres entrées (audio du jeu).
 // Le score composite garde les pondérations 0,3 / 0,3 / 0,4 de l'ancien exe.
 export class ClipsModule extends EventEmitter {
-  constructor({ obs, bot, settings, ffmpeg = null, activity = null, clock = () => Date.now() }) {
+  constructor({ obs, bot, settings, ffmpeg = null, activity = null, clock = () => Date.now(), postRoll = POST_ROLL, learner = new ClipLearner({ file: null }), history = new StreamHistory({ file: null }) }) {
     super();
+    this.history = history;
+    this.learner = learner;
+    this._baselineSavedAt = 0;
+    this.postRoll = postRoll;
+    this.chatTimes = []; // horodatages des messages du chat (signal d'appoint)
+    this._hits = 0;
     this.ffmpeg = ffmpeg;
     this.activity = activity;
     this.clock = clock;
@@ -93,6 +111,16 @@ export class ClipsModule extends EventEmitter {
   }
 
   get cfg() { return this.settings.get().clips; }
+  // Seuil effectif : celui des réglages, ajusté par ce qui a été appris des votes.
+  get threshold() { return Math.max(0.4, Math.min(0.95, this.cfg.threshold + this.learner.offset)); }
+
+  // Seuil réellement appliqué : le seuil appris, relevé au besoin selon la norme des streams précédents.
+  get triggerThreshold() { return this.history.adaptiveThreshold(this.threshold); }
+
+  _saveBaselines() {
+    for (const [k, d] of [['mic', this.emotion.mic], ['voice', this.emotion.voice]]) if (d.warm) this.learner.setBaseline(k, d.baseline);
+  }
+
   get enabled() { return this.settings.get().modules.clips && Boolean(this.settings.get().discord.clipsChannelId); }
 
   start() {
@@ -102,7 +130,7 @@ export class ClipsModule extends EventEmitter {
   }
 
   status() {
-    return { enabled: this.enabled, active: this.active, last: this.lastScores, maxScore: this.maxScore, cooldown: this.cooldown, recent: this.recent.slice(-10) };
+    return { enabled: this.enabled, active: this.active, last: this.lastScores, maxScore: this.maxScore, cooldown: this.cooldown, threshold: this.threshold, triggerThreshold: this.triggerThreshold, learning: this.learner.summary(), history: this.history.summary(), recent: this.recent.slice(-10) };
   }
 
   // Replay Buffer lancé avec le stream (module Clips actif) ; à l'arrêt du stream,
@@ -167,14 +195,24 @@ export class ClipsModule extends EventEmitter {
       this.emotion.mic.reset();
       this.emotion.voice.reset();
       this.gate.reset();
+      const seeded = [['mic', this.emotion.mic], ['voice', this.emotion.voice]].map(([k, d]) => {
+        const b = this.learner.baseline(k);
+        if (b == null) return false;
+        d.seed(b);
+        return true;
+      });
+      this.calibrationMs = seeded[0] ? CALIBRATION_SEEDED_MS : CALIBRATION_MS;
       this.activeSince = this.clock();
+      this.history.begin({ threshold: this.cfg.threshold, offset: this.learner.offset, keepSeconds: this.cfg.keepSeconds, useActivity: this.cfg.useActivity, seeded: Boolean(seeded[0]) });
       this.cooldown = 0;
       this.activity?.start();
       this.maxScore = 0;
       this.bot.log('(clips) détection démarrée — OBS diffuse sur cette machine.');
     } else {
+      this._saveBaselines();
+      this.history.end();
       this.activity?.stop();
-      this.bot.log(`(clips) détection arrêtée. Score max atteint : ${this.maxScore.toFixed(2)} (seuil ${this.cfg.threshold}).`);
+      this.bot.log(`(clips) détection arrêtée. Score max atteint : ${this.maxScore.toFixed(2)} (seuil ${this.threshold.toFixed(2)}).`);
     }
   }
 
@@ -186,15 +224,26 @@ export class ClipsModule extends EventEmitter {
     if (this.obs.listAudioInputs && t - this._desktopAt > 60_000) await this._refreshDesktop();
     const micScore = this.emotion.mic.score(t);
     const voiceScore = this.emotion.voice.score(t);
-    const mic = micScore.value;
+    const mic = this.learner.apply('mic', micScore);
     // Le son du PC mélange jeu et amis : ce qui ressemble à de la voix compte à plein, le reste très peu.
-    const speech = voiceScore.value * (0.15 + 0.85 * this.gate.likeness(t));
+    const speech = this.learner.apply('voice', voiceScore) * (0.15 + 0.85 * this.gate.likeness(t));
     const sample = this.cfg.useActivity ? this.activity?.latest : null;
     const input = sample ? this.norm.input.push(activityLevel(sample)) : 0;
     // Les émotions (micro, ou voix des amis un peu moins sûre) font le score ; l'activité de jeu
     // l'amplifie ou le tempère de ±15 % mais ne peut jamais déclencher un clip seule.
-    const score = Math.min(1, Math.max(mic, speech * 0.9) * (0.85 + 0.3 * input));
-    this.lastScores = { score, mic, speech, input };
+    // Deux sources qui s'accordent (micro ET amis) valent plus qu'une seule ; le chat qui s'emballe
+    // renforce un moment déjà détecté dans le son, sans jamais en créer un à lui seul.
+    const sources = [mic, speech * 0.9].sort((a, b) => b - a);
+    const chat = this.chatBoost(t);
+    const emotion = Math.min(1, sources[0] + 0.15 * sources[1]);
+    const score = Math.min(1, (emotion + (emotion > 0.3 ? 0.12 * chat : 0)) * (0.85 + 0.3 * input));
+    this.lastScores = { score, mic, speech, input, chat, types: { mic: micScore, voice: voiceScore } };
+    const level = (d) => {
+      const recent = d.buf.filter((x) => t - x.t < 1000);
+      return recent.length ? Math.max(...recent.map((x) => x.db)) : null;
+    };
+    this.history.tick({ score, micDb: level(this.emotion.mic), voiceDb: level(this.emotion.voice), types: { mic: micScore, voice: voiceScore }, calibrated: t - this.activeSince >= (this.calibrationMs ?? CALIBRATION_MS) });
+    if (t - this._baselineSavedAt > 5 * 60_000) { this._baselineSavedAt = t; this._saveBaselines(); }
     this.maxScore = Math.max(this.maxScore, score);
     if (this.cooldown > 0) {
       this.cooldown -= 1;
@@ -202,19 +251,56 @@ export class ClipsModule extends EventEmitter {
     }
     // Calibration : le niveau habituel des voix s'apprend pendant les premières minutes du direct,
     // aucun clip automatique avant (sinon l'arrivée des amis en vocal passe pour une exclamation).
-    if (!this.cfg.auto || t - this.activeSince < CALIBRATION_MS) return;
-    if (score > this.cfg.threshold) {
+    if (!this.cfg.auto || t - this.activeSince < (this.calibrationMs ?? CALIBRATION_MS)) return;
+    this._hits = score > this.triggerThreshold ? this._hits + 1 : 0;
+    if (this._hits >= SUSTAIN_TICKS) {
+      this._hits = 0;
       this.cooldown = this.cfg.cooldownSeconds;
       const why = [['micro', micScore], ['voix des amis', voiceScore]].filter(([, x]) => x.value > 0.3)
         .map(([n, x]) => `${n} : ${x.laugh >= x.scream && x.laugh >= x.exclaim ? 'rire' : x.scream >= x.exclaim ? 'cri' : 'exclamation'} ${x.value.toFixed(2)}`).join(', ');
       this.bot.log(`(clips) déclencheur automatique — ${why || 'score composite'} · voix ${this.gate.likeness(t).toFixed(2)} · activité ${input.toFixed(2)}`);
-      await this.trigger({ source: 'auto', scores: this.lastScores });
+      const scores = { ...this.lastScores };
+      const momentEndAt = await this._waitMomentEnd();
+      if (!this.cfg.auto) return; // mis en pause pendant l'attente de la fin du moment
+      await this.trigger({ source: 'auto', scores, momentEndAt });
     }
+  }
+
+  // Laisse le moment fort se terminer (rire qui continue, fin de la réaction) avant de sauvegarder.
+  // Renvoie l'instant (ms) où le moment s'est terminé (dernier score au-dessus de la moitié du seuil).
+  async _waitMomentEnd() {
+    const pr = this.postRoll;
+    const half = this.triggerThreshold * 0.5;
+    let endedAt = Date.now();
+    if (!pr) return endedAt;
+    const start = Date.now();
+    let quietSince = null;
+    while (Date.now() - start < pr.maxMs && this.obs.streaming) {
+      await new Promise((r) => setTimeout(r, 250));
+      const now = Date.now();
+      if (this.lastScores.score >= half) { endedAt = now; quietSince = null; } else quietSince ??= now;
+      if (now - start >= pr.minMs && quietSince !== null && now - quietSince >= pr.quietMs) break;
+    }
+    return endedAt;
+  }
+
+  // Le chat réagit après le moment : un afflux de messages par rapport à son rythme habituel (0..1).
+  noteChat() {
+    const t = Date.now();
+    this.chatTimes.push(t);
+    while (this.chatTimes.length && this.chatTimes[0] < t - CHAT_BASE_MS) this.chatTimes.shift();
+  }
+
+  chatBoost(t = Date.now()) {
+    if (this.chatTimes.length < 5) return 0;
+    const recent = this.chatTimes.filter((x) => x > t - CHAT_WINDOW_MS).length;
+    const base = (this.chatTimes.length * CHAT_WINDOW_MS) / CHAT_BASE_MS; // messages habituels par fenêtre de 10 s
+    return clamp01((recent - Math.max(3, 3 * base)) / Math.max(3, 3 * base));
   }
 
   // Déclenchement (auto, bouton de l'app, /clip) : sauvegarde le Replay Buffer
   // puis publie le fichier.
-  async trigger({ source = 'manual', scores = null } = {}) {
+  async trigger({ source = 'manual', scores = null, momentEndAt = null } = {}) {
     if (!this.enabled) return { ok: false, error: 'Module Clips désactivé ou salon de clips non renseigné.' };
     if (!this.bot.ready) return { ok: false, error: "Le bot Discord n'est pas connecté." };
     if (!this.obs.connected) return { ok: false, error: "OBS n'est pas connecté." };
@@ -232,9 +318,22 @@ export class ClipsModule extends EventEmitter {
       const saved = await this.obs.saveReplayBuffer((p) => existsSync(p));
       if (!saved) throw new Error('Fichier du clip introuvable après la sauvegarde.');
       await waitStable(saved);
+      // Clip automatique : on ne garde que les meilleures secondes du Replay Buffer (autour du moment).
+      if (source === 'auto' && this.ffmpeg?.trimClip && this.cfg.keepSeconds > 0) {
+        const tailSec = momentEndAt ? Math.max(0, (Date.now() - momentEndAt) / 1000 - MOMENT_PAD_SEC) : 0;
+        await this.ffmpeg.trimClip(saved, { keepSec: this.cfg.keepSeconds, tailSec });
+      }
       const path = this.store(saved);
       const s = scores || { score: 0, mic: 0, speech: 0, input: 0 };
       const id = await this.publish(path, s);
+      if (source === 'auto') {
+        if (scores?.types) this.learner.remember(id, { types: scores.types, score: scores.score });
+        this.history.clip('auto', id);
+      } else if (this.active && this.lastScores.types) {
+        // Clip demandé à la main : le moment que le détecteur voyait à cet instant était jugé fort.
+        this.learner.manual({ types: this.lastScores.types, score: this.lastScores.score }, this.threshold);
+      }
+      if (source !== 'auto') this.history.clip('manual', id);
       this.recent.push({ id, at: Date.now(), source, file: basename(path) });
       this.bot.log(`(clips) clip publié (${source}) : ${basename(path)}`);
       return { ok: true, id };
@@ -291,6 +390,7 @@ export class ClipsModule extends EventEmitter {
     } else {
       embed.addFields({ name: 'Fichier trop volumineux pour Discord', value: `Récupère-le localement : \`${path}\``, inline: false });
     }
+    if (compressed?.trimmed) embed.addFields({ name: 'Clip rogné', value: `Trop long pour Discord : seules les ${compressed.trimmed} dernières secondes sont jointes. L’original est dans le dossier des clips.`, inline: false });
     // Envoi SANS pied, puis édition pour le poser : tant que le pied manque, le message n'est pas un clip.
     let msg;
     try {
@@ -346,6 +446,10 @@ export class ClipsModule extends EventEmitter {
     const updated = EmbedBuilder.from(embed).setTitle(CLIP_STATUS[next].label).setColor(CLIP_STATUS[next].color).setFooter({ text: clipFooter(message.id, next) });
     await message.edit({ embeds: [updated] });
     this.bot.log(`(clips) clip ${message.id} : ${info.status} -> ${next}`);
+    this.history.vote(message.id, next);
+    if (this.learner.vote(message.id, next)) {
+      this.bot.log(`(clips) apprentissage : clip ${next === 'validated' ? 'validé' : 'refusé'} — seuil effectif ${this.threshold.toFixed(2)}.`);
+    }
   }
 
   // ---- /clip ----

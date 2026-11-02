@@ -26,13 +26,15 @@
   button.sec { background: #24242b; border-color: var(--border); }
   #msg { min-height: 1.2rem; margin-top: .6rem; }
 </style>
+<link rel="stylesheet" href="ui.css">
+<script src="ui.js"></script>
 </head>
 <body>
 <main>
   <h1>Clips</h1>
   <section>
     <p id="state" class="dim">…</p>
-    <button id="btn">🎬 Enregistrer un clip maintenant</button>
+    <button id="btn" data-doing="Sauvegarde…">🎬 Enregistrer un clip maintenant</button>
     <div id="msg"></div>
     <p class="dim">Enregistre les dernières secondes du Replay Buffer d'OBS (à activer une fois : Réglages → Sortie → Enregistrement), les publie dans le salon des clips, et les admins votent : 2 ✅ = validé, 1 ❌ = refusé. Sur Discord, la commande <b>/clip</b> fait la même chose.</p>
   </section>
@@ -44,12 +46,27 @@
     <p class="dim">Le module Clips s'active dans Discord → Modules. La détection repère les exclamations, cris et rires (micro et voix des amis) ; l'activité manette / clavier / souris ne fait qu'amplifier ou tempérer le score. Elle s'apprend pendant les 3 premières minutes du stream.</p>
   </section>
   <section>
+    <b>Apprentissage</b>
+    <p class="dim" id="learnText">…</p>
+    <p class="dim">La détection s'affine toute seule : chaque ✅ / ❌ des admins sur un clip automatique ajuste la confiance accordée au type d'émotion (rire, cri, exclamation) et le seuil ; chaque clip manuel signale un moment fort qu'elle aurait dû voir ; le niveau habituel de ta voix est mémorisé d'un live à l'autre (calibration plus courte). Rien ne sort de ton PC.</p>
+    <button class="sec" id="btnLearnReset" data-doing="Réinitialisation…">Réinitialiser l'apprentissage</button>
+  </section>
+  <section>
+    <b>Historique des streams</b>
+    <p class="dim" id="normText">…</p>
+    <div style="overflow-x:auto"><table id="histTable" class="dim" style="width:100%;border-collapse:collapse;font-size:.85rem"></table></div>
+    <p class="dim">Les 20 derniers streams sont gardés (durée, émotions repérées, pics de voix, clips et verdicts, réglages retenus). Ils servent à connaître ce qui est <i>normal</i> chez toi et tes amis : si les rires et les cris sont fréquents, un rire ne suffit plus, il faut que le moment dépasse nettement l'habituel (le seuil monte de 0,12 au plus, une fois assez de données). Statistiques seulement, aucun son.</p>
+    <button class="sec" id="btnHistReset" data-doing="Effacement…">Effacer l'historique</button>
+  </section>
+  <section>
     <h2>Réglages des clips</h2>
     <label class="check"><input type="checkbox" id="c_auto"> Détection automatique des moments forts <span class="dim">(décochée : il ne reste que le bouton, le raccourci et /clip)</span></label>
     <label class="check"><input type="checkbox" id="c_stop"> Quand le stream s'arrête, arrêter aussi l'enregistrement et le Replay Buffer</label>
     <label class="check"><input type="checkbox" id="c_act"> Tenir compte de l'activité manette / clavier / souris <span class="dim">(compteurs seulement : jamais quelles touches, rien n'est enregistré)</span></label>
     <label>Seuil de détection (0–1) <span class="dim">— plus haut = moins de clips</span></label>
     <input type="number" id="thr" step="0.05" min="0.05" max="1">
+    <label>Secondes gardées par clip automatique <span class="dim">— le Replay Buffer d'OBS peut être plus long (ex. 60 s) : seules les meilleures secondes autour du moment fort sont conservées. 0 = tout garder.</span></label>
+    <input type="number" id="c_keep" step="5" min="0" max="600">
     <label>Dossier des clips <span class="dim">(vide = <span id="defFolder">Vidéos\Sunday Stream Clips</span>)</span></label>
     <input type="text" id="c_folder" placeholder="Ex. D:\Stream\Clips">
     <label>Où chercher la voix de tes amis <span class="dim">— laisse tout décoché : le son du PC (où passe Discord) est analysé automatiquement avec un filtre de voix. Coche des entrées pour restreindre.</span></label>
@@ -57,7 +74,7 @@
     <label>Raccourci clavier pour faire un clip <span class="dim">(global, actif même dans le jeu)</span></label>
     <div class="row"><input type="text" id="hotkey" readonly placeholder="Clique ici puis appuie sur ta combinaison (ex. Ctrl+Alt+C)"><button class="sec" id="btnHkClear">Effacer</button></div>
     <p class="dim">Il faut au moins une touche Ctrl, Alt, Maj ou Windows, plus une lettre, un chiffre ou une touche F1–F24. Pris en compte après « Enregistrer » (quelques secondes).</p>
-    <div style="margin-top:.8rem"><button id="btnSave">Enregistrer</button> <span id="saveMsg" class="dim"></span></div>
+    <div style="margin-top:.8rem"><button id="btnSave" data-doing="Enregistrement…">Enregistrer</button> <span id="saveMsg" class="dim"></span></div>
   </section>
   <section>
     <b>Derniers clips</b>
@@ -76,7 +93,7 @@ const say = (t, bad) => { $('saveMsg').textContent = t; $('saveMsg').style.color
 function fill(s) {
   const c = s.settings.clips;
   $('c_auto').checked = c.auto; $('c_stop').checked = c.stopWithStream; $('c_act').checked = c.useActivity;
-  $('thr').value = c.threshold; $('c_folder').value = c.folder; $('hotkey').value = c.hotkey;
+  $('thr').value = c.threshold; $('c_keep').value = c.keepSeconds; $('c_folder').value = c.folder; $('hotkey').value = c.hotkey;
   voiceSel = new Set(c.voiceInputs);
 }
 
@@ -101,15 +118,34 @@ async function refresh() {
     : !s.settings.discord.clipsChannelId ? "Renseigne l'ID du salon des clips (section Discord)."
     : !s.bot.ready ? "Le bot Discord n'est pas connecté : les clips ne peuvent pas être publiés."
     : c.active ? 'Détection active : OBS diffuse sur ce PC.' : "En attente d'un stream sur ce PC (le bouton fonctionne quand même).";
+  const L = c.learning;
+  if (L) {
+    const off = L.offset === 0 ? 'inchangé' : `${L.offset > 0 ? '+' : ''}${L.offset.toFixed(2)}`;
+    const w = Object.entries(L.weights).filter(([, v]) => Math.abs(v - 1) >= 0.04).map(([k, v]) => `${k.replace('mic.', 'micro · ').replace('voice.', 'amis · ').replace('laugh', 'rire').replace('scream', 'cri').replace('exclaim', 'exclamation')} ×${v.toFixed(2)}`);
+    $('learnText').textContent = `${L.approved} clip(s) validé(s), ${L.refused} refusé(s), ${L.manual} clip(s) manuel(s) · seuil effectif ${c.threshold.toFixed(2)} (ajustement : ${off})` + (w.length ? ` · confiance : ${w.join(', ')}` : ' · aucun ajustement pour l\'instant') + (L.hasBaselines ? ' · niveau de ta voix mémorisé' : '');
+  }
+  const H = c.history;
+  if (H) {
+    const e = H.norm.eventsPerHour;
+    const fmt = (v) => (v == null ? '–' : v);
+    $('normText').textContent = H.norm.ready
+      ? `Norme sur ${H.norm.streams} stream(s) : un moment est « habituel » jusqu'à un score de ${fmt(H.norm.usualScore)} · seuil appliqué ${c.triggerThreshold.toFixed(2)} · par heure de parole : rires micro ${fmt(e['mic.laugh'])}, rires amis ${fmt(e['voice.laugh'])}, cris ${fmt(e['mic.scream'])}, exclamations ${fmt(e['mic.exclaim'])}`
+      : 'Pas encore assez de données pour définir ta norme (il faut environ 10 minutes de parole) : le seuil réglé s\'applique tel quel.';
+    const d = (t) => new Date(t).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    const th = ['Début', 'Durée', 'Clips auto / manuel', '✅ / ❌', 'Score max', 'Rires (micro·amis)', 'Seuil', 'Pic micro'];
+    const rows = H.sessions.map((x) => [d(x.start) + (x.live ? ' · en cours' : ''), x.minutes + ' min', `${x.clips.auto} / ${x.clips.manual}`, `${x.clips.approved} / ${x.clips.refused}`, x.maxScore ?? '–', `${x.events['mic.laugh']}·${x.events['voice.laugh']}`, x.threshold == null ? '–' : (x.threshold + (x.offset || 0)).toFixed(2), x.micP95 == null ? '–' : x.micP95 + ' dB']);
+    const cell = (t, tag) => `<${tag} style="text-align:left;padding:.25rem .5rem;border-bottom:1px solid var(--border)">${t}</${tag}>`;
+    $('histTable').innerHTML = rows.length ? `<tr>${th.map((t) => cell(t, 'th')).join('')}</tr>` + rows.map((r) => `<tr>${r.map((t) => cell(t, 'td')).join('')}</tr>`).join('') : '<tr><td>Aucun stream enregistré pour l\'instant.</td></tr>';
+  }
   $('sc').textContent = c.last.score.toFixed(2); $('mx').textContent = c.maxScore.toFixed(2);
   $('bar').style.width = pct(Math.min(1, c.last.score));
   $('s_mic').textContent = pct(c.last.mic); $('s_sp').textContent = pct(c.last.speech); $('s_in').textContent = pct(c.last.input);
   $('recent').innerHTML = c.recent.slice().reverse().map((r) => `<li>${new Date(r.at).toLocaleTimeString('fr-FR')} · ${r.source} · ${r.file}</li>`).join('') || '<li>Aucun pour l\'instant.</li>';
 }
 $('btnSave').onclick = async () => {
-  const clips = { auto: $('c_auto').checked, stopWithStream: $('c_stop').checked, useActivity: $('c_act').checked, threshold: Number($('thr').value), folder: $('c_folder').value.trim(), hotkey: $('hotkey').value, voiceInputs: [...document.querySelectorAll('#voiceList input:checked')].map((i) => i.value) };
+  const clips = { auto: $('c_auto').checked, stopWithStream: $('c_stop').checked, useActivity: $('c_act').checked, threshold: Number($('thr').value), keepSeconds: Number($('c_keep').value), folder: $('c_folder').value.trim(), hotkey: $('hotkey').value, voiceInputs: [...document.querySelectorAll('#voiceList input:checked')].map((i) => i.value) };
   const r = await fetch('/api/discord/settings', { method: 'POST', body: JSON.stringify({ clips }) }).then((x) => x.json()).catch(() => ({ ok: false, error: 'Service injoignable.' }));
-  if (r.ok) { loaded = false; say('Enregistré.'); await refresh(); } else say(r.error || 'Échec.', true);
+  if (r.ok) { loaded = false; say('Enregistré.'); ui.toast('Réglages des clips enregistrés.', 'ok'); await refresh(); } else say(r.error || 'Échec.', true);
 };
 $('hotkey').addEventListener('keydown', (e) => {
   e.preventDefault();
@@ -121,12 +157,26 @@ $('hotkey').addEventListener('keydown', (e) => {
   $('hotkey').value = [...mods, key].join('+');
   say('Raccourci choisi : ' + $('hotkey').value + ' — clique sur « Enregistrer ».');
 });
+$('btnLearnReset').onclick = async () => {
+  if (!confirm('Oublier tout ce que la détection a appris (confiance par type et seuil) ?')) return;
+  const r = await fetch('/api/clips/learning/reset', { method: 'POST', body: '{}' }).then((x) => x.json());
+  if (!r.ok) throw new Error(r.error || 'Échec.');
+  ui.toast('Apprentissage réinitialisé.', 'ok');
+  refresh();
+};
+$('btnHistReset').onclick = async () => {
+  if (!confirm('Effacer l\'historique des streams ? La norme sera recalculée à partir des prochains.')) return;
+  const r = await fetch('/api/clips/history/reset', { method: 'POST', body: '{}' }).then((x) => x.json());
+  if (!r.ok) throw new Error(r.error || 'Échec.');
+  ui.toast('Historique effacé.', 'ok');
+  refresh();
+};
 $('btnHkClear').onclick = () => { $('hotkey').value = ''; say('Raccourci effacé — clique sur « Enregistrer ».'); };
 $('btn').onclick = async () => {
   $('btn').disabled = true; $('msg').textContent = 'Sauvegarde du clip…'; $('msg').style.color = 'var(--dim)';
   const r = await fetch('/api/clips/trigger', { method: 'POST', body: '{}' }).then((x) => x.json()).catch(() => ({ ok: false, error: 'Service injoignable.' }));
   $('msg').textContent = r.ok ? 'Clip publié.' : r.error; $('msg').style.color = r.ok ? 'var(--ok)' : 'var(--bad)';
-  $('btn').disabled = false; refresh();
+  $('btn').disabled = false; ui.toast(r.ok ? 'Clip publié sur Discord.' : (r.error || 'Clip impossible.'), r.ok ? 'ok' : 'err'); refresh();
 };
 refresh(); setInterval(() => refresh().catch(() => {}), 2000);
 </script>

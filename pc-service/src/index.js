@@ -24,6 +24,7 @@ async function main() {
   const tokenManager = new TokenManager(config.twitch);
   const helix = new HelixClient({ clientId: config.twitch.clientId, tokenManager });
   const chat = new TwitchChat({ channelLogin: config.twitch.channelLogin, tokenManager });
+  chat.on('message', () => discord.clips?.noteChat());
   const deviceAuth = new DeviceAuth({ clientId: config.twitch.clientId });
   const twitch = new TwitchService({ tokenManager, helix, chat, deviceAuth });
 

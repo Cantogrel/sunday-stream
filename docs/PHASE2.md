@@ -42,6 +42,22 @@ Le message de clip garde sa forme (`Micro / Voix / Inputs`), alimentée ainsi :
   un Replay Buffer arrêté dans OBS n'est jamais relancé par un clip automatique. Chaque déclenchement est journalisé
   (quel détecteur, quel type d'émotion, score) pour régler les seuils.
 - Score = max(micro, voix × 0,9) × (0,85 + 0,3 × activité) ; un seul tick suffit ; seuil et cooldown inchangés.
+- **Qualité des moments** (après les streams du 1er nov.) : seuil par défaut 0,75 ; le score doit rester au-dessus du seuil
+  ~2 s (un pic isolé ne compte pas) ; micro et amis qui s'accordent valent plus qu'une source seule ; le rire exige 7 rafales
+  plus fortes que la voix habituelle pour atteindre 1 ; l'exclamation seule plafonne à 0,7 (ne déclenche pas sans renfort) ;
+  l'afflux de messages du chat Twitch renforce un moment déjà détecté (jamais seul).
+- **Fin du moment** : le clip automatique attend que le score retombe (4 s mini, 15 s maxi, 2 s de calme), puis ffmpeg ne
+  garde que `keepSeconds` (45) secondes, fenêtre terminée 4 s après la fin du moment (coupe sans réencodage). Le manuel garde tout.
+- **Apprentissage** (`learning.js`, `learning.json`) : les ✅ / ❌ définitifs des admins sur un clip automatique ajustent la
+  confiance par type d'émotion (poids 0,5–1,3) et le seuil (−0,10 / +0,15) ; un clip manuel renforce ce que les détecteurs
+  voyaient et abaisse le seuil s'il était passé sous le radar ; le niveau habituel de la voix est mémorisé (calibration 90 s au
+  lieu de 3 min, recalage rapide). Remise à zéro dans la page Clips. Les votes ne comptent que sur le PC qui a publié le clip,
+  bot connecté.
+- **Historique et norme** (`history.js`, `stream-history.json`) : les 20 derniers streams (durée, secondes de parole,
+  distribution du score, événements d'émotion, pics de voix, clips auto/manuels, verdicts, réglages retenus). Après ~10 min de
+  parole cumulées, le 97e centile du score « actif » définit l'habituel de la bande : le seuil monte de 0,12 au plus vers
+  cette norme (poids plein à ~1 h de parole), pour ne retenir que ce qui sort vraiment de l'ordinaire. Un stream < 2 min n'est
+  pas gardé ; une session interrompue (mise à jour, arrêt) est close à sa dernière sauvegarde (toutes les 5 min).
 - Limites : sans hauteur de voix ni mots, on détecte la *dynamique* des émotions, pas leur nature ; les seuils
   (dB, durées) sont à ajuster sur de vrais streams. Une manette hors XInput (ex. via Steam Input) peut ne pas compter.
 

@@ -28,6 +28,8 @@
   #msg { min-height: 1.2rem; font-size: .9rem; margin: .4rem 0; }
   .actions { display: flex; gap: .6rem; flex-wrap: wrap; margin-top: .8rem; }
 </style>
+<link rel="stylesheet" href="ui.css">
+<script src="ui.js"></script>
 </head>
 <body>
 <main>
@@ -46,8 +48,8 @@
     <h2>État</h2>
     <div><span class="dot" id="stDot"></span><span id="stText">…</span></div>
     <div class="actions">
-      <button id="btnStart">Lancer le bot maintenant</button>
-      <button id="btnStop">Déconnecter</button>
+      <button id="btnStart" data-doing="Connexion…">Lancer le bot maintenant</button>
+      <button id="btnStop" data-doing="Déconnexion…">Déconnecter</button>
     </div>
     <p class="dim" id="inviteLine" style="display:none">Pour que la commande <b>/clip</b> existe sur Discord, invite (ou réinvite) le bot avec ce lien : <a id="inviteUrl" target="_blank" rel="noopener" style="color:var(--accent)">lien d'invitation</a></p>
     <pre id="log">—</pre>
@@ -56,7 +58,7 @@
   <section>
     <h2>Rejoindre un groupe</h2>
     <p class="dim">Colle le code d'invitation reçu : il contient les salons (vocal, logs, clips), jamais le token.</p>
-    <div class="row"><div><input id="inviteIn" placeholder="SS1-…"></div><button id="btnApply">Appliquer</button></div>
+    <div class="row"><div><input id="inviteIn" placeholder="SS1-…"></div><button id="btnApply" data-doing="Application…">Appliquer</button></div>
   </section>
 
   <section>
@@ -69,7 +71,7 @@
       <div><label>ID du salon des clips</label><input id="clips_ch"></div>
       <div>
         <label>Mon ID Discord</label>
-        <div class="row"><input id="uid"><button id="btnDetect">Détecter</button></div>
+        <div class="row"><input id="uid"><button id="btnDetect" data-doing="Écoute du salon…">Détecter</button></div>
       </div>
       <div><label>Jour actif</label>
         <select id="day">
@@ -85,8 +87,8 @@
     <p class="dim">Le bot se connecte tout seul 30 min avant la plage et se ferme 30 min après la fin (sauf stream en cours). « Lancer le bot maintenant » sert à streamer en dehors de cette plage : il reste alors connecté, sans arrêt automatique, jusqu'à « Déconnecter ». Plus aucune tâche planifiée Windows.</p>
     <div id="msg"></div>
     <div class="actions">
-      <button class="primary" id="btnSave">Enregistrer</button>
-      <button id="btnInvite">Générer un code d'invitation</button>
+      <button class="primary" id="btnSave" data-doing="Enregistrement…">Enregistrer</button>
+      <button id="btnInvite" data-doing="Création…">Générer un code d'invitation</button>
     </div>
     <pre id="inviteOut" style="display:none"></pre>
   </section>
@@ -95,7 +97,7 @@
     <h2>Reprendre l'ancien Sunday Stream Bot</h2>
     <p class="dim" id="legacyInfo"></p>
     <div class="actions">
-      <button id="btnImport">Importer la configuration</button>
+      <button id="btnImport" data-doing="Import…">Importer la configuration</button>
       <button id="btnRetire" class="danger">Arrêter l'ancien bot et supprimer ses 2 tâches planifiées</button>
     </div>
     <p id="legacyMsg" style="min-height:1.2rem;font-size:.9rem;margin:.6rem 0 0"></p>
@@ -144,15 +146,15 @@ async function refresh() {
 
 $('btnSave').onclick = async () => {
   const r = await post('/api/discord/settings', collect());
-  if (r.ok) { $('token').value = ''; loaded = false; await refresh(); say('Enregistré.'); } else say(r.error || 'Échec.', true);
+  if (r.ok) { $('token').value = ''; loaded = false; await refresh(); say('Enregistré.'); ui.toast('Réglages Discord enregistrés.', 'ok'); } else say(r.error || 'Échec.', true);
 };
-$('btnStart').onclick = async () => { const r = await post('/api/discord/start'); say(r.ok ? 'Connexion lancée.' : r.error, !r.ok); refresh(); };
-$('btnStop').onclick = async () => { await post('/api/discord/stop'); refresh(); };
+$('btnStart').onclick = async () => { const r = await post('/api/discord/start'); say(r.ok ? 'Connexion lancée.' : r.error, !r.ok); ui.toast(r.ok ? 'Connexion du bot lancée…' : r.error, r.ok ? 'ok' : 'err'); refresh(); };
+$('btnStop').onclick = async () => { await post('/api/discord/stop'); ui.toast('Bot déconnecté.', 'ok'); refresh(); };
 $('btnDetect').onclick = async () => {
   say('Rejoins maintenant le salon vocal cible (2 min max)…');
   const b = collect();
   const r = await post('/api/discord/detect-id', { token: b.token, channelId: b.discord.voiceChannelId });
-  if (r.ok) { $('uid').value = r.id; say(`Détecté : ${r.name} (${r.id}).`); } else say(r.error, true);
+  if (r.ok) { $('uid').value = r.id; say(`Détecté : ${r.name} (${r.id}).`); ui.toast(`Identifiant détecté : ${r.name}.`, 'ok'); } else say(r.error, true);
 };
 $('btnInvite').onclick = async () => {
   await $('btnSave').onclick();

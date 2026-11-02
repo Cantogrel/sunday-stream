@@ -26,6 +26,16 @@ export class EmotionDetector {
     this.learning = []; // niveaux de parole vus pendant l'apprentissage
     this.voicedMs = 0;
     this.last = null;
+    this.fastUntilMs = 0;
+  }
+
+  // Départ à chaud avec le niveau habituel mémorisé d'un stream précédent : il est ensuite recalé
+  // vite (2 minutes de parole) au cas où le micro ou le gain aurait changé.
+  seed(baselineDb) {
+    this.baseline = baselineDb;
+    this.voicedMs = this.warmupMs;
+    this.learning = [];
+    this.fastUntilMs = this.warmupMs + 120_000;
   }
 
   // Un relevé du niveau (dB, déjà le maximum des canaux) à l'instant t (ms).
@@ -50,7 +60,7 @@ export class EmotionDetector {
     }
     // La référence ne suit pas les pics : un cri ne doit pas relever « le niveau normal » d'un coup.
     const target = Math.min(db, this.baseline + 6);
-    this.baseline += (target - this.baseline) * Math.min(1, dt / this.tauMs);
+    this.baseline += (target - this.baseline) * Math.min(1, dt / (this.voicedMs < this.fastUntilMs ? 20_000 : this.tauMs));
   }
 
   get warm() {
@@ -70,7 +80,7 @@ export class EmotionDetector {
     if (now.length >= 3) {
       const excess = mean(now) - base;
       const rise = mean(now) - (before.length ? mean(before) : this.floorDb);
-      if (rise >= 6) exclaim = clamp01((excess - 6) / 10);
+      if (rise >= 6 && excess >= 8) exclaim = clamp01((excess - 8) / 10);
     }
 
     const long = win(1500, 0);
@@ -82,7 +92,7 @@ export class EmotionDetector {
     }
 
     const laugh = this._laugh(t, base);
-    return { exclaim: exclaim * 0.85, scream, laugh, value: Math.max(exclaim * 0.85, scream, laugh) };
+    return { exclaim: exclaim * 0.7, scream, laugh, value: Math.max(exclaim * 0.7, scream, laugh) };
   }
 
   _laugh(t, base) {
@@ -91,27 +101,32 @@ export class EmotionDetector {
     const v = s.map((x) => x.db);
     const peaks = [];
     for (let i = 2; i < v.length - 2; i++) {
-      if (!(v[i] >= v[i - 1] && v[i] > v[i + 1]) || v[i] < base - 3) continue; // plateau : le dernier point compte
+      if (!(v[i] >= v[i - 1] && v[i] > v[i + 1]) || v[i] < base) continue; // plateau : le dernier point compte ; un rire est au moins aussi fort que la voix habituelle
       const left = v[i] - Math.min(...v.slice(Math.max(0, i - 6), i));
       const right = v[i] - Math.min(...v.slice(i + 1, i + 7));
-      if (Math.min(left, right) >= 6) peaks.push(s[i].t);
+      if (Math.min(left, right) >= 6) peaks.push({ t: s[i].t, db: v[i] });
     }
     // Plus longue chaîne de pics espacés de 100 à 450 ms et de rythme régulier.
     let best = 0;
+    let bestExcess = 0;
     for (let i = 0; i < peaks.length; i++) {
       const gaps = [];
       for (let j = i + 1; j < peaks.length; j++) {
-        const g = peaks[j] - peaks[j - 1];
+        const g = peaks[j].t - peaks[j - 1].t;
         if (g < 100 || g > 450) break;
         gaps.push(g);
       }
       if (gaps.length >= 3) {
         const m = mean(gaps);
         const cv = Math.sqrt(mean(gaps.map((g) => (g - m) ** 2))) / m;
-        if (cv <= 0.3) best = Math.max(best, gaps.length + 1);
+        if (cv <= 0.3 && gaps.length + 1 > best) {
+          best = gaps.length + 1;
+          bestExcess = mean(peaks.slice(i, i + gaps.length + 1).map((x) => x.db)) - base;
+        }
       }
     }
-    return clamp01((best - 3) / 3);
+    // Plus il y a de rafales (7 pour le maximum) et plus elles dépassent la voix habituelle, plus c'est un vrai rire.
+    return clamp01((best - 3) / 4) * clamp01(0.4 + bestExcess / 6);
   }
 }
 

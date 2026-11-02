@@ -69,3 +69,49 @@ test('run : un processus qui échoue transmet son stderr complet (ffmpeg -i y é
   const err = await run(process.execPath, ['-e', "console.error('Duration: 00:00:59.12'); console.error('x'); console.error('y'); console.error('z'); process.exit(1)"], 10_000).catch((e) => e);
   assert.match(err.stderr, /Duration: 00:00:59\.12/);
 });
+
+test('prepare : clip beaucoup trop long -> rogné à la fin au lieu d’être abandonné', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ss-trim-'));
+  const input = join(dir, 'long.mp4');
+  writeFileSync(input, Buffer.alloc(50 * MB));
+  const calls = [];
+  const runner = async (exe, args) => {
+    calls.push(args);
+    if (args.includes('-b:v')) { writeFileSync(args.at(-1), Buffer.alloc(5 * MB)); return { err: '' }; }
+    throw Object.assign(new Error('x'), { stderr: 'Duration: 00:20:00.00 | Stream #0:0: Video: h264 | Stream #0:1: Audio: aac' });
+  };
+  const tool = new FfmpegTool({ dir, runner });
+  tool.ensure = async () => 'ffmpeg';
+  const out = await tool.prepare(input, 10 * MB);
+  assert.ok(out && out.trimmed > 0 && out.trimmed < 200);
+  const enc = calls.find((a) => a.includes('-b:v'));
+  assert.equal(enc[enc.indexOf('-sseof') + 1], String(-out.trimmed));
+  out.cleanup();
+});
+
+test('trimClip : garde les N dernières secondes avant la fin du moment, écarte le silence final', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ss-tc-'));
+  const input = join(dir, 'Replay.mp4');
+  writeFileSync(input, Buffer.alloc(2048));
+  let cut;
+  const runner = async (exe, args) => {
+    if (args.includes('-t')) { cut = args; writeFileSync(args.at(-1), Buffer.alloc(2048, 1)); return { err: '' }; }
+    throw Object.assign(new Error('x'), { stderr: 'Duration: 00:01:00.00 | Video: h264 | Audio: aac' });
+  };
+  const tool = new FfmpegTool({ dir, runner });
+  tool.ensure = async () => 'ffmpeg';
+  // 60 s de clip, fin du moment 8 s avant la fin : fenêtre de 45 s terminée à 52 s -> début à 7 s
+  assert.equal(await tool.trimClip(input, { keepSec: 45, tailSec: 8 }), 45);
+  assert.equal(cut[cut.indexOf('-ss') + 1], '7.00');
+  assert.equal(await tool.trimClip(input, { keepSec: 45, tailSec: 0 }), 45);
+  assert.equal(cut[cut.indexOf('-ss') + 1], '15.00');
+});
+
+test('trimClip : clip déjà assez court -> rien', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ss-tc2-'));
+  const input = join(dir, 'Replay.mp4');
+  writeFileSync(input, Buffer.alloc(2048));
+  const tool = new FfmpegTool({ dir, runner: async () => { throw Object.assign(new Error('x'), { stderr: 'Duration: 00:00:40.00 | Video: h264' }); } });
+  tool.ensure = async () => 'ffmpeg';
+  assert.equal(await tool.trimClip(input, { keepSec: 45 }), null);
+});

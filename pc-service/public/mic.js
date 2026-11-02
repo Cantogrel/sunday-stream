@@ -34,10 +34,11 @@
   $('btnMicSave').onclick = async () => {
     const r = await post('/api/mic/remember', { input: $('micSel').value });
     $('micState').textContent = r.ok ? 'Micro mémorisé.' : r.error;
+    ui.toast(r.ok ? 'Micro de stream mémorisé.' : r.error, r.ok ? 'ok' : 'err');
     inputsKey = '';
     setTimeout(refresh, 1500);
   };
-  $('btnMicForget').onclick = async () => { await post('/api/mic/forget'); inputsKey = ''; refresh(); };
+  $('btnMicForget').onclick = async () => { await post('/api/mic/forget'); ui.toast('Micro oublié : plus de surveillance.', 'ok'); inputsKey = ''; refresh(); };
 
   refresh().catch(() => {});
   setInterval(() => refresh().catch(() => {}), 4000);
