@@ -165,7 +165,10 @@ function bind() {
   on('phSkip', () => { local.pairSkipped = true; lastKey = ''; render(); });
 }
 
-$('finishBtn').onclick = async () => { await post('/api/setup/complete'); location.href = '/desktop'; };
+// Quitter l'assistant : retour à l'onglet Téléphone de la fenêtre d'appli (ou à la console hors fenêtre).
+const leave = () => { if (parent !== window) parent.postMessage({ type: 'goto', section: 'phone' }, location.origin); else location.href = '/desktop'; };
+$('finishBtn').onclick = async () => { await post('/api/setup/complete'); leave(); };
+$('backBtn').onclick = leave;
 
 async function loadQr() {
   if (Date.now() - local.qrAt < 120000 && local.pair) return;

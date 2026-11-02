@@ -20,8 +20,8 @@ test('pages et scripts de public/ : syntaxe valide', () => {
 
 test('page Discord sans réglages de clips ni micro ; ils sont sur leurs pages', () => {
   const read = (f) => readFileSync(join(DIR, f), 'utf8');
-  for (const id of ['hotkey', 'c_folder', 'micSel', 'voiceList']) assert.ok(!read('discord.html').includes(`id="${id}"`), `discord.html contient ${id}`);
-  for (const id of ['hotkey', 'c_folder', 'voiceList', 'c_auto', 'c_keep', 'btnLearnReset', 'histTable']) assert.ok(read('clips.html').includes(`id="${id}"`), `clips.html sans ${id}`);
+  for (const id of ['hotkey', 'c_folder', 'micSel', 'voiceList', 'm_clips', 'm_couch', 'clips_ch']) assert.ok(!read('discord.html').includes(`id="${id}"`), `discord.html contient ${id}`);
+  for (const id of ['hotkey', 'c_folder', 'voiceList', 'c_auto', 'c_keep', 'btnLearnReset', 'histTable', 'c_module', 'c_channel']) assert.ok(read('clips.html').includes(`id="${id}"`), `clips.html sans ${id}`);
   assert.ok(read('desktop.html').includes('id="micSel"'));
 });
 
@@ -31,4 +31,13 @@ test('pages à boutons : retour visuel commun (ui.css / ui.js) chargé avant les
     assert.ok(t.includes('href="ui.css"') && t.includes('src="ui.js"'), `${f}.html sans ui.css/ui.js`);
     assert.ok(t.indexOf('src="ui.js"') < t.search(/<script(?![^>]*src="ui\.js")/), `${f}.html : ui.js doit précéder les autres scripts`);
   }
+});
+
+test('séparation des sections : modules et assistant chacun dans leur onglet ; bandeau de mise à jour dans la fenêtre d’appli', () => {
+  const read = (f) => readFileSync(join(DIR, f), 'utf8');
+  assert.ok(read('discord.html').includes('id="m_discord"'));
+  assert.ok(read('settings.html').includes('id="m_couch"') && !read('settings.html').includes('id="wizard"'));
+  assert.ok(read('desktop.html').includes('id="wizardBtn"') && !read('desktop.html').includes('id="updateBanner"'));
+  assert.ok(read('shell.html').includes('id="update"'));
+  assert.ok(read('setup.html').includes('id="backBtn"'));
 });

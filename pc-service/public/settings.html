@@ -20,7 +20,8 @@
   button.primary { background: var(--ok); color: #06231a; border: none; font-weight: 700; }
   button:disabled { opacity: .45; cursor: default; }
   [hidden] { display: none !important; }
-  #msg { color: var(--dim); font-size: .8rem; min-height: 1.1em; }
+  #msg, #modMsg { color: var(--dim); font-size: .8rem; min-height: 1.1em; }
+  input[type=checkbox] { width: 1.1rem; height: 1.1rem; flex: none; accent-color: var(--ok); }
 </style>
 <link rel="stylesheet" href="ui.css">
 <script src="ui.js"></script>
@@ -36,8 +37,9 @@
   </div>
 
   <div class="card">
-    <h2>Configuration</h2>
-    <div class="row"><span>Assistant de configuration<small>OBS, VB-Cable, compte Twitch, source micro, jumelage du téléphone</small></span><button id="wizard" type="button">Ouvrir</button></div>
+    <h2>Pilotage depuis le téléphone</h2>
+    <div class="row"><span><label for="m_couch">Activer « Couch Stream »</label><small>La télécommande du stream : l'app Android (Couch Stream) pour lancer le stream, changer de scène, parler dans le micro à distance et lire le chat Twitch depuis le canapé. À décocher sur un PC qui ne sert qu'au bot Discord ou aux clips (le changement s'applique au prochain démarrage de l'app). La configuration pas à pas du téléphone est dans l'onglet <b>Téléphone</b>.</small></span><input type="checkbox" id="m_couch"></div>
+    <div id="modMsg"></div>
   </div>
 
   <div class="card">
@@ -57,7 +59,7 @@
       const s = await api('/api/status', { cache: 'no-store' });
       $('ver').textContent = 'v' + s.version;
       const u = s.update || {};
-      const t = { unknown: "Mises à jour gérées par l'application installée", idle: 'Pas encore vérifié', checking: 'Vérification…', uptodate: 'À jour', available: `Version ${u.version} disponible`, downloading: `Téléchargement… ${u.progress ?? 0} %`, installing: 'Installation…', error: u.message || 'Vérification impossible' };
+      const t = { unknown: "Mises à jour gérées par l'application installée", idle: 'Pas encore vérifié', checking: 'Vérification…', uptodate: `À jour${u.checkedAt ? ` — vérifié à ${new Date(u.checkedAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}` : ''}`, available: `Version ${u.version} disponible`, downloading: `Téléchargement… ${u.progress ?? 0} %`, installing: 'Installation…', error: u.message || 'Vérification impossible' };
       $('upd').textContent = t[u.state] || '';
       $('installRow').hidden = u.state !== 'available';
       $('installText').textContent = u.state === 'available' ? `Installer la version ${u.version} (ferme l'application puis la relance)` : '';
@@ -68,7 +70,12 @@
     const r = await api('/api/update/install', { method: 'POST', body: '{}' });
     if (!r.ok) $('msg').textContent = r.error;
   };
-  $('wizard').onclick = () => post({ url: '/setup' });
+  api('/api/discord').then((d) => { $('m_couch').checked = d.settings.modules.couch; }).catch(() => {});
+  $('m_couch').onchange = async () => {
+    const r = await api('/api/discord/settings', { method: 'POST', body: JSON.stringify({ modules: { couch: $('m_couch').checked } }) });
+    $('modMsg').textContent = r.ok ? 'Enregistré. Le changement s’applique au prochain démarrage de l’app.' : (r.error || 'Échec.');
+    if (r.ok) ui.toast('Réglage enregistré (au prochain démarrage de l’app).', 'ok');
+  };
   $('report').onclick = async () => {
     try { await navigator.clipboard.writeText((await api('/api/diagnostics')).text); $('msg').textContent = 'Rapport copié dans le presse-papiers.'; ui.toast('Rapport de diagnostic copié.', 'ok'); }
     catch { $('msg').textContent = 'Copie impossible.'; }

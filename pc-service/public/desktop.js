@@ -43,7 +43,6 @@ async function pollStatus() {
   st.viewers = s?.viewers ?? st.viewers;
   st.update = s?.update ?? null;
   renderViewers();
-  renderUpdate();
   if (st.obs.connected && !wasConnected) refreshState();
   if (!st.obs.connected) { st.obs.streaming = false; st.clock = null; }
   render();
@@ -326,34 +325,7 @@ $('chFilter').oninput = renderChatters;
 $('chClose').onclick = () => $('chDlg').close();
 
 // ---------- mises à jour ----------
-
-// L'installation n'est jamais automatique (elle ferme l'app, donc coupe un live) :
-// la console propose, l'utilisateur décide.
-function renderUpdate() {
-  const u = st.update, b = $('updateBanner');
-  const text = {
-    available: () => `Mise à jour disponible : version ${u.version} (installée : ${u.current}).`,
-    downloading: () => `Téléchargement de la version ${u.version}… ${u.progress ?? 0} %`,
-    installing: () => `Installation de la version ${u.version} : l'application va redémarrer.`,
-    error: () => u.message || 'Mise à jour impossible.',
-  }[u?.state];
-  b.classList.toggle('hidden', !text);
-  if (!text) return;
-  b.classList.toggle('err', u.state === 'error');
-  $('updateText').textContent = text();
-  const btn = $('updateBtn');
-  btn.classList.toggle('hidden', !['available', 'error'].includes(u.state));
-  btn.textContent = u.state === 'error' ? 'Réessayer' : 'Installer maintenant';
-}
-
-$('updateBtn').onclick = async () => {
-  const live = st.obs.streaming;
-  if (live && !confirm('Un live est en cours : l’installation ferme l’application et le coupe côté service. Installer quand même ?')) return;
-  const r = await (await fetch(st.update?.state === 'error' ? '/api/update/check' : '/api/update/install', { method: 'POST', body: JSON.stringify({ force: live }) })).json();
-  if (!r.ok) toast(r.error);
-  else ui.toast(st.update?.state === 'error' ? 'Nouvelle recherche lancée…' : 'Installation lancée : l’application va redémarrer.', 'ok');
-};
-
+// Le bandeau « mise à jour disponible » est dans la fenêtre d'appli (shell.js), sur toutes les sections.
 $('checkUpdateBtn').onclick = () => ui.checkUpdate();
 
 // ---------- téléphone & infos ----------
@@ -423,6 +395,8 @@ $('copyReport').onclick = async () => {
     $('reportMsg').textContent = 'Rapport copié : colle-le dans un message (aucun mot de passe ni jeton n\'y figure).';
   } catch { $('reportMsg').textContent = 'Le service ne répond pas.'; }
 };
+if (document.documentElement.dataset.view === 'phone') document.querySelector('#dlg > h2').textContent = 'Téléphone';
+$('wizardBtn').onclick = () => { if (parent !== window) parent.postMessage({ type: 'goto', url: '/setup' }, location.origin); else location.href = '/setup'; };
 $('settingsBtn').onclick = openDialog;
 $('dlgClose').onclick = () => $('dlg').close();
 $('dlg').addEventListener('close', () => clearInterval(dlgTimer));

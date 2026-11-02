@@ -34,14 +34,9 @@
 <body>
 <main>
   <h1>Discord</h1>
-  <p class="dim">Les réglages des clips (détection, dossier, raccourci) sont dans la section <b>Clips</b>, le micro de stream dans <b>Stream &amp; OBS</b>.</p>
 
   <section>
-    <h2>Modules de cette installation</h2>
-    <label class="check"><input type="checkbox" id="m_couch"> Couch Stream (téléphone, micro, chat Twitch)</label>
-    <label class="check"><input type="checkbox" id="m_discord"> Bot Discord (lancement du stream à l'arrivée au vocal)</label>
-    <label class="check"><input type="checkbox" id="m_clips"> Clips (Replay Buffer, publication et vote)</label>
-    <p class="dim">Sur le PC d'un ami, ne coche que Discord (et Clips). Le changement du module Couch s'applique au prochain démarrage de l'app.</p>
+    <label class="check"><input type="checkbox" id="m_discord"> Activer le bot Discord <span class="dim">(lance le stream quand tu rejoins le vocal)</span></label>
   </section>
 
   <section>
@@ -51,7 +46,7 @@
       <button id="btnStart" data-doing="Connexion…">Lancer le bot maintenant</button>
       <button id="btnStop" data-doing="Déconnexion…">Déconnecter</button>
     </div>
-    <p class="dim" id="inviteLine" style="display:none">Pour que la commande <b>/clip</b> existe sur Discord, invite (ou réinvite) le bot avec ce lien : <a id="inviteUrl" target="_blank" rel="noopener" style="color:var(--accent)">lien d'invitation</a></p>
+    <p class="dim" id="inviteLine" style="display:none">Pour que la commande <b>/clip</b> (clips) existe sur Discord, invite (ou réinvite) le bot avec ce lien : <a id="inviteUrl" target="_blank" rel="noopener" style="color:var(--accent)">lien d'invitation</a></p>
     <pre id="log">—</pre>
   </section>
 
@@ -68,7 +63,6 @@
     <div class="grid">
       <div><label>ID du salon vocal cible</label><input id="voice"></div>
       <div><label>ID du salon de logs (vide = ni logs ni verrou)</label><input id="log_ch"></div>
-      <div><label>ID du salon des clips</label><input id="clips_ch"></div>
       <div>
         <label>Mon ID Discord</label>
         <div class="row"><input id="uid"><button id="btnDetect" data-doing="Écoute du salon…">Détecter</button></div>
@@ -111,10 +105,8 @@ let loaded = false;
 
 function fill(s) {
   const d = s.settings.discord;
-  $('m_couch').checked = s.settings.modules.couch;
   $('m_discord').checked = s.settings.modules.discord;
-  $('m_clips').checked = s.settings.modules.clips;
-  $('voice').value = d.voiceChannelId; $('log_ch').value = d.logChannelId; $('clips_ch').value = d.clipsChannelId;
+  $('voice').value = d.voiceChannelId; $('log_ch').value = d.logChannelId;
   $('uid').value = d.userId; $('day').value = d.activeDay; $('h0').value = d.hourStart; $('h1').value = d.hourEnd;
   $('scene').value = d.startingScene;
   $('tokState').textContent = s.hasToken ? '— enregistré (chiffré)' : '— non renseigné';
@@ -123,8 +115,8 @@ function fill(s) {
 function collect() {
   return {
     token: $('token').value,
-    modules: { couch: $('m_couch').checked, discord: $('m_discord').checked, clips: $('m_clips').checked },
-    discord: { voiceChannelId: $('voice').value.trim(), logChannelId: $('log_ch').value.trim(), clipsChannelId: $('clips_ch').value.trim(), userId: $('uid').value.trim(), activeDay: $('day').value, hourStart: Number($('h0').value), hourEnd: Number($('h1').value), startingScene: $('scene').value.trim() },
+    modules: { discord: $('m_discord').checked },
+    discord: { voiceChannelId: $('voice').value.trim(), logChannelId: $('log_ch').value.trim(), userId: $('uid').value.trim(), activeDay: $('day').value, hourStart: Number($('h0').value), hourEnd: Number($('h1').value), startingScene: $('scene').value.trim() },
   };
 }
 

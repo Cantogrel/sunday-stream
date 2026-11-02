@@ -1,6 +1,6 @@
 {
   "name": "pc-service",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "description": "Service Sunday Stream (obs-websocket, Twitch, WebSocket local)",
   "type": "module",
   "main": "src/index.js",

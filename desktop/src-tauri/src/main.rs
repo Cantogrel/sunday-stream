@@ -420,6 +420,14 @@ fn install_update(app: AppHandle, dir: PathBuf) {
         if UPDATE_BUSY.swap(true, Ordering::SeqCst) {
             return;
         }
+        // Fenêtre d'appli ouverte (même réduite dans la barre des tâches) : on la rouvrira après le redémarrage.
+        let was_open = app.get_webview_window("main").and_then(|w| w.is_visible().ok()).unwrap_or(false);
+        let reopen_flag = dir.join("reopen-window.flag");
+        if was_open {
+            let _ = fs::write(&reopen_flag, "1");
+        } else {
+            let _ = fs::remove_file(&reopen_flag);
+        }
         let current = app.package_info().version.to_string();
         let fail = |message: String| {
             write_status(&dir, serde_json::json!({ "state": "error", "current": current, "message": message }));
@@ -446,6 +454,7 @@ fn install_update(app: AppHandle, dir: PathBuf) {
                         )
                         .await;
                     if let Err(e) = result {
+                        let _ = fs::remove_file(&reopen_flag);
                         fail(format!("La version {version} est disponible mais l'installation a échoué : {e}"));
                     }
                 }
@@ -689,9 +698,13 @@ fn main() {
                             let done = fs::read_to_string(dir.join("setup.json"))
                                 .map(|s| s.replace(' ', "").contains("\"completed\":true"))
                                 .unwrap_or(false);
+                            // Relance après une mise à jour alors que la fenêtre était ouverte : on la rouvre au premier plan.
+                            let reopen = dir.join("reopen-window.flag");
+                            let after_update = reopen.exists();
+                            let _ = fs::remove_file(&reopen);
                             if !done {
                                 show_main(&handle, &dir, "wizard");
-                            } else if manual_launch {
+                            } else if manual_launch || after_update {
                                 show_main(&handle, &dir, "live");
                             }
                             return;

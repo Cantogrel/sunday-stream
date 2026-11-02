@@ -100,8 +100,16 @@
   html[data-view="obs"] main > .col:nth-child(2) { display: none; }
   html[data-view="chat"] main > .col:nth-child(1) { display: none; }
   html[data-view="phone"] main { display: none; }
-  html[data-view="phone"] #dlg { display: block; margin: 1.4rem auto; max-width: 520px; }
-  html[data-view="phone"] #dlgClose { display: none; }
+  html[data-view="phone"] #dlg { margin: 1.4rem auto; max-width: 560px; }
+  html[data-view="phone"] #dlg[open] { display: flex; flex-direction: column; gap: .9rem; }
+  html[data-view="phone"] #dlg > h2 { order: 0; margin: 0; }
+  html[data-view="phone"] #dlg > .row.phones { order: 1; }
+  html[data-view="phone"] #dlg > .tabs { order: 2; margin: 0; }
+  html[data-view="phone"] #dlg > #pairBox, html[data-view="phone"] #dlg > #apkBox { order: 3; }
+  html[data-view="phone"] #dlg > #devBox { order: 4; }
+  html[data-view="phone"] #dlg > #wizardCard { order: 5; margin: 0; }
+  html[data-view="phone"] #dlg > .row.phones { padding: .55rem .8rem; border-radius: 9px; background: #14141a; border: 1px solid var(--border); }
+  html[data-view="phone"] #dlgClose, html[data-view="phone"] .app-only, html[data-view="phone"] #reportMsg { display: none !important; }
 
   @media (max-width: 900px) { main { grid-template-columns: 1fr; overflow-y: auto; } .col { overflow: visible; } .chat { min-height: 24rem; } }
 </style>
@@ -124,7 +132,6 @@
   <button class="btn" id="settingsBtn">Téléphone &amp; infos</button>
 </header>
 
-<div id="updateBanner" class="banner hidden"><span id="updateText"></span><button class="btn primary" id="updateBtn" data-doing="Démarrage…">Installer</button></div>
 
 <main>
   <div class="col">
@@ -196,9 +203,14 @@
   <div id="pairBox"><p>Chargement…</p></div>
   <div id="apkBox" class="hidden"></div>
   <div id="devBox"></div>
-  <div class="row"><span>Téléphones connectés</span><b id="dlgPhones">0</b></div>
-  <div class="row"><span>Version du service</span><span><b id="dlgVersion">–</b> <button class="btn small" id="checkUpdateBtn" data-doing="Recherche…" type="button">Rechercher une mise à jour</button></span></div>
-  <div style="display:flex;justify-content:space-between;margin-top:1rem"><button class="btn" id="copyReport" data-doing="Copie…">Copier le rapport de diagnostic</button><button class="btn" id="dlgClose">Fermer</button></div>
+  <div class="card" id="wizardCard" style="margin-top:1rem">
+    <div class="card-title">Assistant de configuration du téléphone</div>
+    <p style="margin:0 0 .6rem;color:var(--dim);font-size:.85rem;line-height:1.4">Pas à pas : vérifie qu'OBS est joignable, installe le câble audio virtuel (VB-Cable) pour le micro du téléphone, connecte ton compte Twitch, crée la source micro dans OBS, puis jumelle le téléphone. À lancer à la première installation ou si quelque chose ne marche plus.</p>
+    <button class="btn" id="wizardBtn" type="button">Ouvrir l'assistant</button>
+  </div>
+  <div class="row phones"><span>Téléphones connectés</span><b id="dlgPhones">0</b></div>
+  <div class="row app-only"><span>Version du service</span><span><b id="dlgVersion">–</b> <button class="btn small" id="checkUpdateBtn" data-doing="Recherche…" type="button">Rechercher une mise à jour</button></span></div>
+  <div class="app-only" style="display:flex;justify-content:space-between;margin-top:1rem"><button class="btn" id="copyReport" data-doing="Copie…">Copier le rapport de diagnostic</button><button class="btn" id="dlgClose">Fermer</button></div>
   <div id="reportMsg" style="font-size:.78rem;color:var(--dim);margin-top:.4rem;text-align:right"></div>
 </dialog>
 
