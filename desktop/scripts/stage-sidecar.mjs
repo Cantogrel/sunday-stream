@@ -36,7 +36,7 @@ await build({
   format: 'esm',
   target: 'node22',
   external: ['node-web-audio-api', 'bufferutil', 'utf-8-validate', 'zlib-sync', 'erlpack', '@discordjs/opus', 'sodium-native', 'libsodium-wrappers'],
-  banner: { js: "import { createRequire as __sundayCreateRequire } from 'node:module'; const require = __sundayCreateRequire(import.meta.url);" },
+  banner: { js: "import { createRequire as __sundayCreateRequire } from 'node:module'; const require = __sundayCreateRequire(import.meta.url); import { fileURLToPath as __sundayFtu } from 'node:url'; import { dirname as __sundayDn } from 'node:path'; const __filename = __sundayFtu(import.meta.url); const __dirname = __sundayDn(__filename);" },
   minifyWhitespace: true,
   minifySyntax: true,
   legalComments: 'none',
@@ -45,6 +45,8 @@ await build({
 // version.js lit ../package.json (version du service) ; "type" : module pour le bundle ESM.
 writeFileSync(join(svc, 'package.json'), JSON.stringify({ name: 'sunday-stream-service', version: pkg.version, type: 'module' }, null, 2));
 
+// opusscript (inliné dans le bundle) lit son .wasm à côté du bundle via __dirname.
+copyFileSync(join(svcSrc, 'node_modules', 'opusscript', 'build', 'opusscript_native_wasm.wasm'), join(svc, 'src', 'opusscript_native_wasm.wasm'));
 cpSync(join(svcSrc, 'public'), join(svc, 'public'), { recursive: true });
 cpSync(join(root, 'mobile-app', 'www'), join(out, 'mobile-app', 'www'), { recursive: true });
 

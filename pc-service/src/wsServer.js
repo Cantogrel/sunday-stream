@@ -330,9 +330,22 @@ LOCAL_WS_TOKEN=${token}
       case 'obs.switchScene':
         return this.obs.switchScene(payload.sceneName);
       case 'obs.startStream':
-        return this.obs.startStream();
+{
+        await this.obs.startStream();
+        // Même comportement que le lancement par la plage horaire : l'enregistrement suit le stream (option).
+        if (this.discord?.settings.get().stream.recordWithStream && !(await this.obs.isRecording())) await this.obs.startRecord();
+        return;
+      }
       case 'obs.stopStream':
-        return this.obs.stopStream();
+{
+        // Arrêter le live depuis l'app coupe tout : stream, enregistrement et Replay Buffer.
+        await this.obs.stopStream();
+        const errs = [];
+        if (await this.obs.isRecording().catch(() => false)) await this.obs.stopRecord().catch((e) => errs.push(e.message));
+        if (await this.obs.replayBufferActive().catch(() => false)) await this.obs.stopReplayBuffer().catch((e) => errs.push(e.message));
+        if (errs.length) console.error('[obs] arrêt du live : enregistrement/tampon non coupé —', errs.join(' ; '));
+        return;
+      }
       case 'obs.toggleMic':
         return { muted: await this.obs.toggleMic() };
       case 'obs.setMicMuted':

@@ -275,7 +275,7 @@ export class DiscordBot extends EventEmitter {
         }
         await this.obs.startStream();
       }
-      if (!(await this.obs.isRecording())) await this.obs.startRecord();
+      if (this.settings.get().stream.recordWithStream && !(await this.obs.isRecording())) await this.obs.startRecord();
       return status;
     } catch (err) {
       this.log(`ÉCHEC du démarrage du stream : ${err.message}`);

@@ -58,7 +58,7 @@ export function createDiscordModules({ obs }) {
       case 'POST /api/discord/settings': {
         const prev = settings.get();
         if (typeof body.token === 'string' && body.token.trim()) await settings.setToken(body.token);
-        settings.update({ modules: body.modules, discord: body.discord, clips: body.clips, stream: typeof body.micGuard === 'boolean' ? { micGuard: body.micGuard } : undefined });
+        settings.update({ modules: body.modules, discord: body.discord, clips: body.clips, stream: { ...(typeof body.micGuard === 'boolean' && { micGuard: body.micGuard }), ...(typeof body.recordWithStream === 'boolean' && { recordWithStream: body.recordWithStream }) } });
         if (body.modules && !settings.get().modules.clips) activity.stop();
         syncHotkey();
         // Modules : un module désactivé coupe immédiatement le bot.

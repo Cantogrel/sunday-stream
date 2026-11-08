@@ -137,7 +137,7 @@ export class ClipsModule extends EventEmitter {
   // enregistrement et Replay Buffer coupés si l'option est cochée.
   async _onStreamState(active) {
     if (active) {
-      if (!this.enabled) return;
+      if (!this.enabled || !this.cfg.auto) return; // détection en pause : pas de tampon (les clips manuels le lancent à la demande)
       if (!(await this.obs.replayBufferActive())) {
         await this.obs.startReplayBuffer();
         this.bot.log('(clips) Replay Buffer démarré avec le stream.');
@@ -219,7 +219,19 @@ export class ClipsModule extends EventEmitter {
   async _tick() {
     const live = this.enabled && this.bot.ready && this.obs.connected && this.obs.streaming;
     this._setActive(Boolean(live));
-    if (!live) return;
+    if (!live) { this._autoSeen = null; return; }
+    // Détection réactivée / coupée en cours de stream : le tampon de relecture suit.
+    if (this._autoSeen !== this.cfg.auto) {
+      const first = this._autoSeen == null;
+      this._autoSeen = this.cfg.auto;
+      if (this.cfg.auto && !(await this.obs.replayBufferActive())) {
+        await this.obs.startReplayBuffer();
+        this.bot.log('(clips) détection reprise : Replay Buffer démarré.');
+      } else if (!this.cfg.auto && !first && (await this.obs.replayBufferActive())) {
+        await this.obs.stopReplayBuffer();
+        this.bot.log('(clips) détection en pause : Replay Buffer coupé.');
+      }
+    }
     const t = this.clock();
     if (this.obs.listAudioInputs && t - this._desktopAt > 60_000) await this._refreshDesktop();
     const micScore = this.emotion.mic.score(t);

@@ -18,6 +18,7 @@
       if (s.settings.stream.micInput) $('micSel').value = s.settings.stream.micInput;
     }
     if (document.activeElement !== $('micOn')) $('micOn').checked = s.settings.stream.micGuard;
+    if (document.activeElement !== $('recOn')) $('recOn').checked = s.settings.stream.recordWithStream;
     const m = s.mic;
     $('micState').textContent = !m.enabled ? 'Surveillance désactivée.'
       : !m.configured ? 'Aucun micro mémorisé.'
@@ -31,6 +32,7 @@
     await post('/api/discord/settings', { micGuard: $('micOn').checked });
     refresh();
   };
+  $('recOn').onchange = () => post('/api/discord/settings', { recordWithStream: $('recOn').checked });
   $('btnMicSave').onclick = async () => {
     const r = await post('/api/mic/remember', { input: $('micSel').value });
     $('micState').textContent = r.ok ? 'Micro mémorisé.' : r.error;

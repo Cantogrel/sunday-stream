@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { DATA_DIR } from './paths.js';
 
@@ -22,22 +22,35 @@ function runPs(body, input) {
   });
 }
 
+const BACKUP_FILE = `${SECRETS_FILE}.bak`;
+
+async function readBlob(file) {
+  const blob = readFileSync(file, 'utf8').trim();
+  const json = await runPs("$b = [Convert]::FromBase64String($in); [Text.Encoding]::UTF8.GetString([Security.Cryptography.ProtectedData]::Unprotect($b, $null, 'CurrentUser'))", blob);
+  return JSON.parse(json);
+}
+
+// Fichier illisible (écriture interrompue, corruption) : repli sur la copie précédente.
 export async function loadSecrets() {
-  if (!existsSync(SECRETS_FILE)) return {};
-  try {
-    const blob = readFileSync(SECRETS_FILE, 'utf8').trim();
-    const json = await runPs("$b = [Convert]::FromBase64String($in); [Text.Encoding]::UTF8.GetString([Security.Cryptography.ProtectedData]::Unprotect($b, $null, 'CurrentUser'))", blob);
-    return JSON.parse(json);
-  } catch (err) {
-    console.error('[secrets] lecture impossible (autre compte Windows ?):', err.message);
-    return {};
+  for (const file of [SECRETS_FILE, BACKUP_FILE]) {
+    if (!existsSync(file)) continue;
+    try {
+      return await readBlob(file);
+    } catch (err) {
+      console.error(`[secrets] lecture impossible (${file}):`, err.message);
+    }
   }
+  return {};
 }
 
 export async function saveSecrets(data) {
   mkdirSync(DATA_DIR, { recursive: true });
   const blob = await runPs("$b = [Text.Encoding]::UTF8.GetBytes($in); [Convert]::ToBase64String([Security.Cryptography.ProtectedData]::Protect($b, $null, 'CurrentUser'))", JSON.stringify(data));
-  writeFileSync(SECRETS_FILE, blob);
+  // Écriture atomique : jamais de fichier à moitié écrit si le service est coupé en plein enregistrement.
+  const tmp = `${SECRETS_FILE}.tmp`;
+  writeFileSync(tmp, blob);
+  if (existsSync(SECRETS_FILE)) copyFileSync(SECRETS_FILE, BACKUP_FILE);
+  renameSync(tmp, SECRETS_FILE);
 }
 
 // Mise à jour partielle : fusionne avec l'existant.

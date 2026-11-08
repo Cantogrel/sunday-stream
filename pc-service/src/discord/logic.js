@@ -193,7 +193,7 @@ export const DEFAULT_SETTINGS = {
   },
   clips: { threshold: 0.75, keepSeconds: 45, cooldownSeconds: 90, stopWithStream: false, hotkey: 'Ctrl+Alt+C', folder: '', voiceInputs: [], useActivity: true, auto: true },
   // Micro de référence du stream : mémorisé une fois, vérifié et remis en place tout seul (micGuard.js).
-  stream: { micInput: '', micDeviceId: '', micTracks: null, micGuard: true },
+  stream: { micInput: '', micDeviceId: '', micTracks: null, micGuard: true, recordWithStream: true },
 };
 
 // 0 est une valeur valide (contrairement à l'ancien `or` Python).
@@ -236,6 +236,7 @@ export function normalizeSettings(raw = {}) {
       micDeviceId: String(st.micDeviceId ?? ''),
       micTracks: st.micTracks && typeof st.micTracks === 'object' ? st.micTracks : null,
       micGuard: st.micGuard !== false,
+      recordWithStream: st.recordWithStream !== false,
     },
   };
   for (const k of Object.keys(out.modules)) out.modules[k] = Boolean(out.modules[k]);
