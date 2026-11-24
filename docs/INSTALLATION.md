@@ -28,8 +28,10 @@ tu actives un ou plusieurs **modules** :
 3. Dans la fenêtre : **Discord → Rejoindre un groupe**, colle le code, **Appliquer**.
 4. Colle le token dans **Configuration → Token du bot**, puis **Détecter** à côté de « Mon ID Discord » (rejoins le
    salon vocal quand l'appli te le demande) et **Enregistrer**.
-5. Dans **Modules de cette installation**, laisse **Discord** coché (et **Clips** si tu veux), décoche **Canapé**.
-6. Ouvre OBS (WebSocket activé) puis **Connecter maintenant (test)** : l'état doit passer à « connecté ».
+5. Dans la section **Discord**, coche **Activer le bot Discord** (et, dans **Clips**, **Activer les clips** si tu veux ces
+   derniers). Dans **Réglages**, décoche **Activer « Couch Stream »** (le changement s'applique au prochain démarrage de l'app).
+6. Ouvre OBS (WebSocket activé) puis, dans **Discord → État**, clique **Lancer le bot maintenant** : l'état doit passer à
+   « Connecté ».
 
 À partir de là, le dimanche soir, l'appli se connecte toute seule 30 min avant le début et se ferme 30 min après la
 fin : rien d'autre à lancer.
