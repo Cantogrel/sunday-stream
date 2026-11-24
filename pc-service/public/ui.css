@@ -25,3 +25,11 @@ button.ui-busy::before {
 #ui-toast.ok { border-color: #2f9e6e; } #ui-toast.ok::before { content: '✓ '; color: #4cd5a0; font-weight: 700; }
 #ui-toast.err { border-color: #c0504d; } #ui-toast.err::before { content: '⚠ '; color: #ff8a85; font-weight: 700; }
 @media (prefers-reduced-motion: reduce) { button, #ui-toast, button.ui-busy::before { transition: none; animation: none; } }
+
+.ui-modal { position: fixed; inset: 0; z-index: 10000; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.6); }
+.ui-modal-box { max-width: min(28rem, 92vw); padding: 1.1rem 1.2rem; border-radius: 10px; background: #23232b; color: #eee; border: 1px solid #3a3a45; box-shadow: 0 10px 40px rgba(0,0,0,.6); font: .9rem/1.45 system-ui, sans-serif; }
+.ui-modal-box p { margin: 0 0 1rem; white-space: pre-line; }
+.ui-modal-actions { display: flex; gap: .6rem; justify-content: flex-end; }
+.ui-modal-actions button { padding: .45rem 1rem; border-radius: 6px; border: 1px solid #3a3a45; background: #2e2e38; color: #eee; font: inherit; cursor: pointer; }
+.ui-modal-actions button:focus-visible { outline: 2px solid #8ab4ff; outline-offset: 2px; }
+.ui-modal-actions button.danger { background: #8f2f2c; border-color: #c0504d; }

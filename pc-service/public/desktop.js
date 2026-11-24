@@ -200,7 +200,7 @@ setInterval(tickClock, 1000);
 $('streamBtn').onclick = async () => {
   try {
     if (st.obs.streaming) {
-      if (!confirm('Arrêter le stream en cours ?')) return;
+      if (!await ui.confirm('Arrêter le stream en cours ?', { ok: 'Arrêter le stream', danger: true })) return;
       await cmd('obs.stopStream');
     } else await cmd('obs.startStream');
   } catch (e) { toast(e.message); }
@@ -266,8 +266,8 @@ function fillMessage(div, m) {
     cmd('chat.delete', { messageId: m.id }).then(() => markDeleted(m.id, { reason: 'delete' })).catch((e) => toast(e.message)));
   div.querySelector('[data-a=to]')?.addEventListener('click', () =>
     cmd('chat.timeout', { username: m.username, duration: 600 }).catch((e) => toast(e.message)));
-  div.querySelector('[data-a=ban]')?.addEventListener('click', () => {
-    if (confirm(`Bannir ${m.displayName} ?`)) cmd('chat.ban', { username: m.username }).catch((e) => toast(e.message));
+  div.querySelector('[data-a=ban]')?.addEventListener('click', async () => {
+    if (await ui.confirm(`Bannir ${m.displayName} ?`, { ok: 'Bannir', danger: true })) cmd('chat.ban', { username: m.username }).catch((e) => toast(e.message));
   });
 }
 
@@ -350,7 +350,7 @@ async function loadDevices() {
         `<div class="dev"><div class="info"><b>${esc(d.name)}</b><small>${d.online ? '● connecté' : 'vu ' + ago(d.lastSeenAt)}${d.appVersion ? ' · app v' + esc(d.appVersion) : ''}</small></div><button data-id="${esc(d.id)}">Oublier</button></div>`).join('')
       : '';
     $('devBox').querySelectorAll('button').forEach((b) => (b.onclick = async () => {
-      if (!confirm(b.dataset.id === 'legacy' ? 'Oublier les téléphones jumelés avec l’ancien token partagé ? Ils devront être jumelés à nouveau par QR.' : 'Oublier ce téléphone ? Il devra être jumelé à nouveau.')) return;
+      if (!await ui.confirm(b.dataset.id === 'legacy' ? 'Oublier les téléphones jumelés avec l’ancien token partagé ? Ils devront être jumelés à nouveau par QR.' : 'Oublier ce téléphone ? Il devra être jumelé à nouveau.', { ok: 'Oublier', danger: true })) return;
       await fetch('/api/devices/' + encodeURIComponent(b.dataset.id), { method: 'DELETE' });
       loadDevices();
     }));

@@ -83,7 +83,7 @@ function renderUpdate() {
 $('updateBtn').onclick = async () => {
   if (upd?.state === 'error') { await ui.checkUpdate(); return; }
   const live = await fetch('/api/live', { cache: 'no-store' }).then((r) => r.json()).then((l) => Boolean(l.obs?.streaming)).catch(() => false);
-  if (live && !confirm('Un live est en cours : l’installation ferme l’application et le coupe côté service. Installer quand même ?')) return;
+  if (live && !await ui.confirm('Un live est en cours : l’installation ferme l’application et le coupe côté service. Installer quand même ?', { ok: 'Installer quand même', danger: true })) return;
   const r = await fetch('/api/update/install', { method: 'POST', body: JSON.stringify({ force: live }) }).then((x) => x.json());
   if (!r.ok) throw new Error(r.error || 'Installation impossible.');
   ui.toast('Installation lancée : l’application va redémarrer.', 'ok');

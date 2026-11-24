@@ -177,7 +177,7 @@ $('btnImport').onclick = async () => {
   if (r.ok) { loaded = false; await refresh(); legacySay('✅ Configuration importée (token compris, non affiché). Vérifie les champs ci-dessus.'); } else legacySay(r.error, true);
 };
 $('btnRetire').onclick = async () => {
-  if (!confirm("Arrêter l'ancien bot et supprimer ses tâches planifiées ?\nSunday Stream prendra le relais.")) return;
+  if (!await ui.confirm("Arrêter l'ancien bot et supprimer ses tâches planifiées ?\nSunday Stream prendra le relais.", { ok: 'Arrêter et supprimer', danger: true })) return;
   $('btnRetire').disabled = true; $('btnImport').disabled = true;
   legacySay("Arrêt de l'ancien bot et suppression des tâches en cours (jusqu'à 30 s)…");
   const r = await post('/api/discord/legacy/retire').catch(() => ({ ok: false, error: 'Service injoignable.' }));
