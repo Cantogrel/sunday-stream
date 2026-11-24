@@ -170,14 +170,14 @@ $('c_auto').onchange = async () => {
   ui.toast(on ? 'Détection automatique activée.' : 'Détection automatique en pause : plus aucun clip automatique.', 'ok');
 };
 $('btnLearnReset').onclick = async () => {
-  if (!confirm('Oublier tout ce que la détection a appris (confiance par type et seuil) ?')) return;
+  if (!await ui.confirm('Oublier tout ce que la détection a appris (confiance par type et seuil) ?', { ok: 'Oublier', danger: true })) return;
   const r = await fetch('/api/clips/learning/reset', { method: 'POST', body: '{}' }).then((x) => x.json());
   if (!r.ok) throw new Error(r.error || 'Échec.');
   ui.toast('Apprentissage réinitialisé.', 'ok');
   refresh();
 };
 $('btnHistReset').onclick = async () => {
-  if (!confirm('Effacer l\'historique des streams ? La norme sera recalculée à partir des prochains.')) return;
+  if (!await ui.confirm('Effacer l\'historique des streams ? La norme sera recalculée à partir des prochains.', { ok: 'Effacer', danger: true })) return;
   const r = await fetch('/api/clips/history/reset', { method: 'POST', body: '{}' }).then((x) => x.json());
   if (!r.ok) throw new Error(r.error || 'Échec.');
   ui.toast('Historique effacé.', 'ok');

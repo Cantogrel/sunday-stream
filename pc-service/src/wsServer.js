@@ -174,7 +174,8 @@ LOCAL_WS_TOKEN=${token}
     };
 
     ws.on('message', (raw) => {
-      conn.queue = conn.queue.then(() => this._handleMessage(ws, raw, conn));
+      // Une erreur dans un message ne doit ni tuer le service ni bloquer la file du client.
+      conn.queue = conn.queue.then(() => this._handleMessage(ws, raw, conn)).catch((err) => console.error('[ws] message ignoré:', err.message));
     });
 
     ws.on('close', () => {
@@ -201,6 +202,10 @@ LOCAL_WS_TOKEN=${token}
       msg = JSON.parse(raw.toString());
     } catch {
       return ws.send(JSON.stringify({ type: 'error', error: 'JSON invalide' }));
+    }
+    // `null`, nombre, chaîne ou tableau : JSON valide mais pas un message.
+    if (!msg || typeof msg !== 'object' || Array.isArray(msg)) {
+      return ws.send(JSON.stringify({ type: 'error', error: 'message invalide' }));
     }
 
     if (!conn.authed) {

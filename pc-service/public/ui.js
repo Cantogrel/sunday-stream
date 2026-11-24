@@ -57,5 +57,30 @@
     toast('Pas de réponse du serveur de mises à jour. Réessayez dans un instant.', 'err');
   };
 
-  window.ui = { toast, checkUpdate };
+  // Confirmation par modale accessible (jamais de popup native) : Échap ou clic hors boîte = Annuler, focus piégé, focus rendu.
+  const confirmDialog = (message, { ok = 'Confirmer', cancel = 'Annuler', danger = false } = {}) => new Promise((resolve) => {
+    const previous = document.activeElement;
+    const overlay = document.createElement('div');
+    overlay.className = 'ui-modal';
+    overlay.innerHTML = '<div class="ui-modal-box" role="alertdialog" aria-modal="true" aria-describedby="ui-modal-msg"><p id="ui-modal-msg"></p><div class="ui-modal-actions"><button type="button" data-v="0"></button><button type="button" data-v="1"></button></div></div>';
+    const box = overlay.firstChild;
+    box.querySelector('#ui-modal-msg').textContent = message;
+    const [btnCancel, btnOk] = box.querySelectorAll('button');
+    btnCancel.textContent = cancel;
+    btnOk.textContent = ok;
+    if (danger) btnOk.classList.add('danger');
+    const close = (value) => { overlay.remove(); document.removeEventListener('keydown', onKey, true); previous?.focus?.(); resolve(value); };
+    const onKey = (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(false); }
+      else if (e.key === 'Tab') { e.preventDefault(); (document.activeElement === btnCancel ? btnOk : btnCancel).focus(); }
+    };
+    btnCancel.addEventListener('click', () => close(false));
+    btnOk.addEventListener('click', () => close(true));
+    overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close(false); });
+    document.addEventListener('keydown', onKey, true);
+    document.body.appendChild(overlay);
+    btnCancel.focus(); // action sûre par défaut
+  });
+
+  window.ui = { toast, checkUpdate, confirm: confirmDialog };
 })();

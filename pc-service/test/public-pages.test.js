@@ -41,3 +41,10 @@ test('séparation des sections : modules et assistant chacun dans leur onglet ; 
   assert.ok(read('shell.html').includes('id="update"'));
   assert.ok(read('setup.html').includes('id="backBtn"'));
 });
+
+test('aucune popup native du navigateur (alert / confirm / prompt) : modale ui.confirm à la place', () => {
+  for (const f of readdirSync(DIR).filter((n) => /\.(html|js)$/.test(n))) {
+    const t = readFileSync(join(DIR, f), 'utf8');
+    assert.ok(!/(^|[^.\w])(alert|confirm|prompt)\(/m.test(t), `${f} utilise une popup native`);
+  }
+});
