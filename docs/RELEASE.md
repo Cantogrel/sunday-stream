@@ -29,12 +29,13 @@ live côté téléphone, confirmée côté console.
 - **Taille** : le workflow de release exécute `desktop/scripts/check-size.mjs 39.8` après le build de l'installeur ;
   au-delà de 39,8 Mo (mébioctets, comme `BASELINE.md`), la release n'est **pas** publiée. En local :
   `cd desktop && npm run check-size`. Pour changer le budget, modifier l'argument dans `release.yml` **et** le plan.
-- **Tests** : `.github/workflows/ci.yml` lance `npm test` du service et les tests des scripts de release à chaque push
-  sur `main` et chaque pull request.
+- **Tests** : pas de CI sur les pushs ni les pull requests (supprimée le 2026-11-24, elle ralentissait tout).
+  Les checks s'exécutent **en local avant chaque PR et chaque tag**, résultat cité dans la PR :
+  `cd pc-service && npm test` puis `node --test desktop/test/check-size.test.js`.
 
 ## Avant de tagger
 
-Monter les versions : `pc-service/package.json`, `desktop/package.json`,
+Lancer les checks locaux (section Tests ci-dessus). Monter les versions : `pc-service/package.json`, `desktop/package.json`,
 `desktop/src-tauri/tauri.conf.json`, `desktop/src-tauri/Cargo.toml`, et
 `versionName`/`versionCode` dans `mobile-app/android/app/build.gradle`.
 Incrémenter `PROTOCOL` / `MIN_APP_PROTOCOL` (`pc-service/src/version.js`)
