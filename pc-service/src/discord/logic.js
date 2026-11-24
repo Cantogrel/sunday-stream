@@ -29,6 +29,10 @@ export function isWindowActive(now, { activeDay, hourStart, hourEnd }) {
 // Le bot doit tourner entre (début − 30 min) et (fin + 30 min) du jour actif.
 // Remplace les tâches planifiées SundayStreamBot_Start / _Stop.
 export function botShouldRun(now, { activeDay, hourStart, hourEnd }) {
+  // Fenêtre qui commence à 0 h : le départ (−30 min) tombe la veille, à 23 h 30.
+  const tomorrow = new Date(now);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  if (hourStart === 0 && dayName(tomorrow) === activeDay) return now.getHours() === 23 && now.getMinutes() >= 60 - START_LEAD_MINUTES;
   if (dayName(now) !== activeDay) return false;
   const start = new Date(now);
   start.setHours(hourStart, 0, 0, 0);
@@ -193,7 +197,7 @@ export const DEFAULT_SETTINGS = {
   },
   clips: { threshold: 0.75, keepSeconds: 45, cooldownSeconds: 90, stopWithStream: false, hotkey: 'Ctrl+Alt+C', folder: '', voiceInputs: [], useActivity: true, auto: true },
   // Micro de référence du stream : mémorisé une fois, vérifié et remis en place tout seul (micGuard.js).
-  stream: { micInput: '', micDeviceId: '', micTracks: null, micGuard: true },
+  stream: { micInput: '', micDeviceId: '', micTracks: null, micGuard: true, recordWithStream: true },
 };
 
 // 0 est une valeur valide (contrairement à l'ancien `or` Python).
@@ -236,6 +240,7 @@ export function normalizeSettings(raw = {}) {
       micDeviceId: String(st.micDeviceId ?? ''),
       micTracks: st.micTracks && typeof st.micTracks === 'object' ? st.micTracks : null,
       micGuard: st.micGuard !== false,
+      recordWithStream: st.recordWithStream !== false,
     },
   };
   for (const k of Object.keys(out.modules)) out.modules[k] = Boolean(out.modules[k]);

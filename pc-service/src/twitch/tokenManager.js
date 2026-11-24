@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events';
-import { updateSecrets } from '../secureStore.js';
+import { loadSecrets, updateSecrets } from '../secureStore.js';
 
 const TOKEN_URL = 'https://id.twitch.tv/oauth2/token';
 const VALIDATE_URL = 'https://id.twitch.tv/oauth2/validate';
@@ -54,7 +54,30 @@ export class TokenManager extends EventEmitter {
     }
   }
 
-  async refresh() {
+  // Un seul renouvellement à la fois : le refresh token est à usage unique, deux appels
+  // simultanés en invalideraient un.
+  refresh() {
+    this._refreshing ??= this._refresh().finally(() => { this._refreshing = null; });
+    return this._refreshing;
+  }
+
+  async _refresh() {
+    try {
+      return await this._refreshOnce();
+    } catch (err) {
+      if (!err.fatalAuth) throw err;
+      // Refus : une autre instance du service a peut-être déjà renouvelé le jeton et enregistré
+      // le nouveau sur le disque. On réessaie avec celui-là avant d'abandonner la connexion.
+      const saved = (await loadSecrets()).twitchRefreshToken;
+      if (!saved || saved === this.refreshToken) throw err;
+      console.log('[twitch] jeton local périmé : nouvel essai avec celui du magasin');
+      this.accessToken = (await loadSecrets()).twitchAccessToken || this.accessToken;
+      this.refreshToken = saved;
+      return await this._refreshOnce();
+    }
+  }
+
+  async _refreshOnce() {
     const params = {
       grant_type: 'refresh_token',
       refresh_token: this.refreshToken,

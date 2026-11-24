@@ -31,7 +31,7 @@ verrou, même vote des clips (voir [CONTRACT-DISCORD.md](CONTRACT-DISCORD.md)). 
 2. **Reprendre l'ancien Sunday Stream Bot → Importer la configuration** : l'appli retrouve l'ancien exe grâce à sa
    tâche planifiée et lit son `.env` (token, salons, jour et heures, seuil des clips, accès OBS si OBS n'est pas encore
    configuré). Le token et le mot de passe ne s'affichent jamais ; le token est stocké chiffré.
-3. Vérifie la configuration, puis **Connecter maintenant (test)**.
+3. Vérifie la configuration, puis **Lancer le bot maintenant** (section État).
 4. Seulement quand tout est bon : **Arrêter l'ancien bot et supprimer ses 2 tâches planifiées**. L'ancien bot est
    arrêté proprement (`--stop`), puis `SundayStreamBot_Start` et `SundayStreamBot_Stop` sont supprimées : la
    planification est désormais interne à Sunday Stream (début − 30 min, fin + 30 min).

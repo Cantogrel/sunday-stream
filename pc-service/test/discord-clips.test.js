@@ -19,7 +19,7 @@ const settingsWith = (over = {}) => ({
 });
 
 function setup({ obsOver = {} } = {}) {
-  const obs = Object.assign(new EventEmitter(), { connected: true, streaming: true }, obsOver);
+  const obs = Object.assign(new EventEmitter(), { connected: true, streaming: true, replayBufferActive: async () => true }, obsOver);
   const bot = new DiscordBot({ obs, settings: settingsWith(), confirm: {} });
   bot.ready = true;
   bot.running = true;
@@ -286,7 +286,7 @@ test('watchdog : ferme à fin + 30 min sauf stream lancé en cours, jamais en mo
 });
 
 // ---- Replay Buffer lié au stream, raccourci ----
-function streamSetup({ clipsOn = true, stopWithStream = false, rec = true, rb = false } = {}) {
+function streamSetup({ clipsOn = true, stopWithStream = false, rec = true, rb = false, auto = true } = {}) {
   const log = [];
   const state = { rec, rb };
   const obs = Object.assign(new EventEmitter(), {
@@ -298,8 +298,12 @@ function streamSetup({ clipsOn = true, stopWithStream = false, rec = true, rb = 
     stopRecord: async () => { state.rec = false; log.push('stopRec'); },
   });
   const bot = new DiscordBot({ obs, settings: settingsWith(), confirm: {} });
-  const settings = { get: () => normalizeSettings({ modules: { discord: true, clips: clipsOn }, discord: { clipsChannelId: '44444' }, clips: { stopWithStream } }) };
-  return { clips: new ClipsModule({ obs, bot, settings, postRoll: null }), log, state };
+  const settings = { get: () => normalizeSettings({ modules: { discord: true, clips: clipsOn }, discord: { clipsChannelId: '44444' }, clips: { stopWithStream, auto } }) };
+  const cfg = { auto };
+  settings.get = ((g) => () => { const v = g(); v.clips.auto = cfg.auto; return v; })(settings.get);
+  const clips = new ClipsModule({ obs, bot, settings, postRoll: null });
+  obs.streaming = true; bot.ready = true;
+  return { clips, log, state, cfg };
 }
 
 test('Clips actif : le Replay Buffer démarre avec le stream, sans doublon', async () => {
@@ -307,6 +311,21 @@ test('Clips actif : le Replay Buffer démarre avec le stream, sans doublon', asy
   await clips._onStreamState(true);
   await clips._onStreamState(true);
   assert.deepEqual(log, ['startRB']);
+});
+
+test('Détection auto coupée au lancement : pas de Replay Buffer', async () => {
+  const { clips, log } = streamSetup({ auto: false });
+  await clips._onStreamState(true);
+  await clips._tick();
+  assert.deepEqual(log, []);
+});
+
+test('Détection réactivée puis recoupée en cours de stream : le Replay Buffer suit', async () => {
+  const { clips, log, cfg } = streamSetup({ auto: false });
+  await clips._tick();
+  cfg.auto = true; await clips._tick(); await clips._tick();
+  cfg.auto = false; await clips._tick();
+  assert.deepEqual(log, ['startRB', 'stopRB']);
 });
 
 test('Clips désactivé : le stream ne touche pas au Replay Buffer', async () => {
