@@ -30,9 +30,8 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      # Caches : lus par les builds de tag, écrits par les builds de main
-      # (workflow warm-cache.yml) — un tag ne peut pas réutiliser le cache d'un
-      # autre tag, seulement celui de la branche par défaut.
+      # Caches : plus de préchauffage depuis main (workflow warm-cache supprimé le
+      # 2026-11-24) ; un build de tag repart donc d'un cache vide.
       - uses: gradle/actions/setup-gradle@v4
 
       - uses: Swatinem/rust-cache@v2
