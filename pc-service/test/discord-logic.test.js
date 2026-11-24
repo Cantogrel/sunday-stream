@@ -38,6 +38,14 @@ test('fenêtre active et plage de fonctionnement du bot', () => {
   assert.equal(stopAt(at(21), cfg).getMinutes(), 30);
 });
 
+test('bot : fenêtre à 0 h => départ la veille à 23 h 30 (contrat §2)', () => {
+  const early = { activeDay: 'Sunday', hourStart: 0, hourEnd: 3 };
+  assert.ok(!botShouldRun(at(23, 29, 24), early)); // samedi 23:29
+  assert.ok(botShouldRun(at(23, 30, 24), early));
+  assert.ok(botShouldRun(at(0, 10, 25), early)); // dimanche 00:10
+  assert.ok(!botShouldRun(at(3, 30, 25), early));
+});
+
 const msg = (authorId, createdAt, ...footers) => ({ authorId, createdAt, footers });
 
 test('findMarkers : auteur, 3 segments, plus récent d\'abord, filtre de date', () => {
